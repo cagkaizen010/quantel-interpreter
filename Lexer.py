@@ -8,7 +8,7 @@ class CalcLexer(Lexer):
     ignore = '\t'
 
     # Regular expression rules for tokens
-    NAME    = r'[a-zA-Z_][a-zA-Z0-9_]'
+    NAME    = r'[a-zA-Z_][a-zA-Z0-9_]*'
     PLUS    = r'\+'
     MINUS   = r'-'
     TIMES   = r'\*'
