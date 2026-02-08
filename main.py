@@ -20,8 +20,8 @@
 #             for token in tokens:
 #                 print(token)
 
-#             # 2. Parsing: Analyze structure and execute
-#             # parser.parse(tokens)
+            # 2. Parsing: Analyze structure and execute
+            # parser.parse(tokens)
 
 
 import sys
@@ -44,8 +44,9 @@ def run_cli():
     # Case 1: Direct string input via terminal
     if args.string:
         print(f"--- Scanning String Input ---")
-        for tok in lexer.tokenize(args.string):
-            print(f"Type: {tok.type:12} | Value: {tok.value}")
+        tokens = lexer.tokenize(args.string)
+        for tok in tokens:
+            print(tok)
 
     # Case 2: Reading from the sample file
     elif args.file:
