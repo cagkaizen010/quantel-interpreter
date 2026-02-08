@@ -35,7 +35,11 @@ class QuantelParser(Parser):
         if p[1] == "+": return p.expr0 + p.expr1
         if p[1] == "-": return p.expr0 - p.expr1
         if p[1] == "*": return p.expr0 * p.expr1
-        if p[1] == "/": return p.expr0 / p.expr1
+        if p[1] == "/": 
+            if p.expr1 == 0:
+                print("Error: Division by zero")
+                return 0
+            return p.expr0 / p.expr1
 
     @_('MINUS expr %prec UMINUS')
     def expr(self, p):
@@ -54,5 +58,5 @@ class QuantelParser(Parser):
         try:
             return self.decl[p.NAME]
         except LookupError:
-            print(f"Undefined name '{p.decl}'")
+            print(f"Undefined name '{p.NAME}'")
             return 0
