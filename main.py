@@ -11,23 +11,17 @@ class QuantelLexer(Lexer):
         MATRIX, TENSOR, STEP
     }
 
-    # 2. Ignored characters (whitespace)
     ignore = ' \t'
 
-    # 3. Regular expression rules for simple tokens
-    # Longest match wins, but for same-length, order of definition matters
     OPERATOR = r'\.\.|==|!=|>=|<=|\+=|-=|\*=|/=|@=|=[+\-*/@%^><&;,.\{\}\(\)\[\]]'
 
-    # 4. Complex rules with actions
     @_(r'\d+')
     def NUM(self, t):
-        t.value = int(t.value)  # Convert string to actual integer
+        t.value = int(t.value)
         return t
 
     @_(r'[a-zA-Z][a-zA-Z0-9]*')
     def ID(self, t):
-        # SLY handles keywords elegantly:
-        # We check if the ID is a reserved keyword
         keywords = {
             'import': 'IMPORT', 'record': 'RECORD', 'if': 'IF', 'else': 'ELSE',
             'for': 'FOR', 'in': 'IN', 'while': 'WHILE', 'repeat': 'REPEAT',
@@ -40,7 +34,6 @@ class QuantelLexer(Lexer):
         t.type = keywords.get(t.value, 'ID')
         return t
 
-    # 5. Line number and position tracking
     @_(r'\n+')
     def ignore_newline(self, t):
         self.lineno += t.value.count('\n')
@@ -49,7 +42,7 @@ class QuantelLexer(Lexer):
         print(f"Illegal character '{t.value[0]}' at line {self.lineno}")
         self.index += 1
 
-# --- Usage ---
+# test part
 if __name__ == '__main__':
     sample_code = """
     import myLib;
