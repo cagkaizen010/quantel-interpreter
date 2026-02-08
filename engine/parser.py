@@ -1,27 +1,27 @@
-from Lexer import CalcLexer
+from engine.lexer import QuantelLexer 
 from sly import Parser
 
-class CalcParser(Parser):
+class QuantelParser(Parser):
     # Get the token list from the lexer (required)
-    tokens = CalcLexer.tokens
+    tokens = QuantelLexer.tokens
 
     # Precedence rules (to handle order of operations)
     precedence = (
-        ('left', PLUS, MINUS),
-        ('left', TIMES, DIVIDE),
+        ('left', PLUS, MINUS), # pyright: ignore[reportUndefinedVariable]
+        ('left', TIMES, DIVIDE), # type: ignore
         ('right', UMINUS), # Urany minus operator
     )
 
     # Dictionary to store variables
-    names = {}
+    decl= {}
 
     # Grammar Rules
     # The method name is usually 'statement' or 'expr'
     # The decorator defines the rule: e.g., "statement : NAME ASSIGN expr"
 
-    @_('NAME ASSIGN expr')
+    @_('DTYPE NAME ASSIGN expr')
     def statement(self, p):
-        self.names[p.NAME] = p.expr
+        self.decl[p.NAME] = p.expr
 
     @_('expr')
     def statement(self, p):
@@ -41,7 +41,7 @@ class CalcParser(Parser):
     def expr(self, p):
         return -p.expr
 
-    @_('LPAREN expr RPAREN')
+    @_('LPAREN expr RPAREN') # type: ignore
     def expr(self, p):
         return p.expr
 
@@ -52,7 +52,7 @@ class CalcParser(Parser):
     @_('NAME')
     def expr(self, p):
         try:
-            return self.names[p.NAME]
+            return self.decl[p.NAME]
         except LookupError:
-            print(f"Undefined name '{p.NAME}'")
+            print(f"Undefined name '{p.decl}'")
             return 0
