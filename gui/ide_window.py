@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import filedialog
 import io
 import contextlib
+import re  # Added for intelligent line number extraction
 
 # --- Project GUI Components ---
 from gui.editor_panel import EditorPanel
@@ -15,7 +16,6 @@ from gui.utils import render_ast_tree
 from engine.lexer import QuantelLexer
 
 # Safe Import for Parser/Interpreter/Optimizer
-# (Prevents crash if files are still being written)
 try:
     from engine.parser import QuantelParser
     from engine.interpreter import QuantelInterpreter
@@ -40,62 +40,156 @@ class QuantelIDE(ctk.CTk):
         self.current_file = None
         self.show_memory = True
         self.show_tac = True
-        self.interpreter_instance = None  # Keep reference for memory inspection
+        self.interpreter_instance = None
 
         # 2. Main Layout
-
-        # Vertical Split: Top (Editor+Tools) / Bottom (Output)
         self.main_pane = tk.PanedWindow(self, orient=tk.VERTICAL, bg="#2b2b2b", bd=0, sashwidth=6)
         self.main_pane.pack(fill=tk.BOTH, expand=True)
 
-        # Horizontal Split: Left (Editor) / Right (Tools)
         self.top_pane = tk.PanedWindow(self.main_pane, orient=tk.HORIZONTAL, bg="#2b2b2b", bd=0, sashwidth=6)
         self.main_pane.add(self.top_pane, stretch="always", height=600)
 
         # 3. Initialize Components
-
-        # --- Left: Code Editor ---
         self.editor_panel = EditorPanel(self.top_pane)
         self.top_pane.add(self.editor_panel, stretch="always", width=900)
 
-        # --- Right: Side Tools Container ---
         self.side_container = ctk.CTkFrame(self.top_pane, corner_radius=0)
         self.top_pane.add(self.side_container, stretch="never", width=400)
 
-        # Grid layout for the side container
         self.side_container.grid_columnconfigure(0, weight=1)
-        self.side_container.grid_rowconfigure(0, weight=1)  # Memory Map row
-        self.side_container.grid_rowconfigure(1, weight=1)  # TAC Viewer row
+        self.side_container.grid_rowconfigure(0, weight=1)
+        self.side_container.grid_rowconfigure(1, weight=1)
 
-        # Right Top: Memory Map
         self.memory_panel = MemoryMapPanel(self.side_container)
         self.memory_panel.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
 
-        # Right Bottom: TAC Viewer (White Box)
         self.tac_panel = TACViewerPanel(self.side_container)
         self.tac_panel.grid(row=1, column=0, sticky="nsew", padx=2, pady=2)
 
-        # --- Bottom: Output Panel ---
-        self.output_panel = OutputPanel(self.main_pane)
+        self.output_panel = OutputPanel(
+            self.main_pane,
+            on_line_click=self.highlight_editor_line
+        )
         self.main_pane.add(self.output_panel, stretch="never", height=300)
 
         # 4. Menus & Bindings
         self._create_menu()
         self._bind_shortcuts()
 
-        # 5. Open File (if argument provided)
         if file_path:
             self._open_specific_file(file_path)
 
     # -------------------------------------------------------------------------
-    # UI SETUP HELPERS
+    # BRIDGE METHODS
+    # -------------------------------------------------------------------------
+
+    def highlight_editor_line(self, line_number):
+        """Called when a user clicks a row in the Lexer tab."""
+        self.editor_panel.highlight_line(line_number)
+
+    def _get_line_from_error(self, err):
+        """Intelligently finds a line number in an error object or string."""
+        # 1. Try common attribute names
+        for attr in ['lineno', 'line', 'row']:
+            val = getattr(err, attr, None)
+            if isinstance(val, int): return val
+
+        # 2. Try to regex the string (looks for 'line 69' etc)
+        match = re.search(r"line (\d+)", str(err), re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+
+        return 1  # Fallback to 1
+
+    # -------------------------------------------------------------------------
+    # CORE LOGIC
+    # -------------------------------------------------------------------------
+
+    def run_quantel_code(self):
+        self.output_panel.clear_all()
+        self.editor_panel.clear_indicators()
+        self.output_panel.select_tab("Output")
+
+        code = self.editor_panel.get_text()
+
+        try:
+            # --- PHASE 1: LEXER ---
+            lexer = QuantelLexer()
+            tokens = list(lexer.tokenize(code))
+            self.output_panel.update_lexer_tab(tokens)
+
+            if lexer.errors:
+                for err in lexer.errors:
+                    line = self._get_line_from_error(err)
+                    self.editor_panel.mark_error(line)
+                self.output_panel.show_error("Lexer Errors", lexer.errors)
+                return
+
+            # --- PHASE 2: PARSER ---
+            if not QuantelParser:
+                self.output_panel.show_error("Config Error", ["Parser missing."])
+                return
+
+            parser = QuantelParser()
+            ast_tree = parser.parse(iter(tokens))
+
+            if parser.errors:
+                for err in parser.errors:
+                    line = self._get_line_from_error(err)
+                    self.editor_panel.mark_error(line)
+                self.output_panel.show_error("Parser Errors", parser.errors)
+                return
+
+            # --- PHASE 2.1: SEMANTIC ANALYSIS ---
+            try:
+                from engine.semantic_analyzer import SemanticAnalyzer, SemanticError
+                analyzer = SemanticAnalyzer()
+                analyzer.analyze(ast_tree)
+                self.output_panel.update_symbols_tab(analyzer)
+            except SemanticError as e:
+                line = self._get_line_from_error(e)
+                self.editor_panel.mark_error(line)
+                self.output_panel.show_error("Semantic Error", [str(e)])
+                return
+            except Exception as e:
+                self.output_panel.show_error("Analyzer Crash", [str(e)])
+                return
+
+            if ast_tree:
+                # --- OPTIMIZER ---
+                if QuantelOptimizer:
+                    optimizer = QuantelOptimizer()
+                    ast_tree = optimizer.optimize(ast_tree)
+                    if optimizer.changed:
+                        self.output_panel.write("Output", "[Optimizer] Code optimized.\n", False)
+
+                # --- VISUALS ---
+                self.output_panel.write("AST", render_ast_tree(ast_tree))
+                self.tac_panel.generate_and_show(ast_tree)
+
+                # --- INTERPRETER ---
+                if QuantelInterpreter:
+                    self.output_panel.write("Output", "--- Running Program ---\n", False)
+                    self.interpreter_instance = QuantelInterpreter()
+                    f = io.StringIO()
+                    try:
+                        with contextlib.redirect_stdout(f):
+                            self.interpreter_instance.interpret(ast_tree)
+                        self.output_panel.write("Output", f.getvalue() + "\n[Finished]", False)
+                        self.memory_panel.update_map(self.interpreter_instance.global_env)
+                    except Exception as e:
+                        self.output_panel.show_error("Runtime Error", [str(e)])
+
+        except Exception as e:
+            self.output_panel.show_error("System Error", [str(e)])
+
+    # -------------------------------------------------------------------------
+    # UI HELPERS (Menus, Files, Toggles)
     # -------------------------------------------------------------------------
 
     def _create_menu(self):
         menubar = tk.Menu(self)
         self.config(menu=menubar)
-
-        # File Menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="New", command=self._new_file, accelerator="Cmd+N")
@@ -104,12 +198,10 @@ class QuantelIDE(ctk.CTk):
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.quit, accelerator="Cmd+Q")
 
-        # Run Menu
         run_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Run", menu=run_menu)
         run_menu.add_command(label="Run Program", command=self.run_quantel_code, accelerator="F5")
 
-        # View Menu
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="View", menu=view_menu)
         view_menu.add_command(label="Toggle Memory Map", command=self._toggle_memory)
@@ -121,104 +213,6 @@ class QuantelIDE(ctk.CTk):
         self.bind_all("<Command-s>", lambda e: self._save_file())
         self.bind_all("<F5>", lambda e: self.run_quantel_code())
 
-    # -------------------------------------------------------------------------
-    # CORE LOGIC: THE COMPILER PIPELINE
-    # -------------------------------------------------------------------------
-
-    def run_quantel_code(self):
-        # 1. Reset UI
-        self.output_panel.clear_all()
-        self.output_panel.select_tab("Output")
-
-        # 2. Get Source Code
-        code = self.editor_panel.get_text()
-
-        try:
-            # --- PHASE 1: LEXER ---
-            lexer = QuantelLexer()
-            tokens = list(lexer.tokenize(code))
-
-            # Let the OutputPanel handle the table formatting
-            self.output_panel.update_lexer_tab(tokens)
-
-            if lexer.errors:
-                self.output_panel.show_error("Lexer Errors", lexer.errors)
-                return
-
-            # --- PHASE 2: PARSER ---
-            if not QuantelParser:
-                self.output_panel.show_error("Configuration Error", ["Parser module missing."])
-                return
-
-            parser = QuantelParser()
-            ast_tree = parser.parse(iter(tokens))
-
-            if parser.errors:
-                self.output_panel.show_error("Parser Errors", parser.errors)
-                return
-
-            # --- PHASE 2.1: SEMANTIC ANALYSIS ---
-            try:
-                from engine.semantic_analyzer import SemanticAnalyzer, SemanticError
-                analyzer = SemanticAnalyzer()
-                analyzer.analyze(ast_tree)
-
-                # Update the GUI Symbols Tab
-                symbol_data = analyzer.get_symbol_table_text()
-                self.output_panel.write("Symbols", symbol_data)
-            except SemanticError as e:
-                self.output_panel.show_error("Semantic Error", [str(e)])
-                return
-            except Exception as e:
-                self.output_panel.show_error("Analyzer Crash", [str(e)])
-                return
-
-            if ast_tree:
-                # --- PHASE 2.5: OPTIMIZER ---
-                if QuantelOptimizer:
-                    optimizer = QuantelOptimizer()
-                    optimized_ast = optimizer.optimize(ast_tree)
-
-                    if optimizer.changed:
-                        self.output_panel.write("Output",
-                                                "[Optimizer] Code optimized (Constant Propagation / Folding).\n",
-                                                clear_first=False)
-                    ast_tree = optimized_ast
-
-                # --- VISUALIZATION ---
-                self.output_panel.write("AST", render_ast_tree(ast_tree))
-                self.tac_panel.generate_and_show(ast_tree)
-
-                # --- PHASE 3: INTERPRETER ---
-                if QuantelInterpreter:
-                    self.output_panel.write("Output", "--- Running Program ---\n", clear_first=False)
-                    self.interpreter_instance = QuantelInterpreter()
-
-                    f = io.StringIO()
-                    try:
-                        with contextlib.redirect_stdout(f):
-                            self.interpreter_instance.interpret(ast_tree)
-
-                        result_output = f.getvalue()
-                        self.output_panel.write("Output", result_output + "\n[Finished]", clear_first=False)
-                        self.memory_panel.update_map(self.interpreter_instance.global_env)
-
-                    except Exception as e:
-                        self.output_panel.show_error("Runtime Error", [str(e)])
-                else:
-                    self.output_panel.write("Errors", "Interpreter module missing.")
-            else:
-                self.output_panel.write("Errors", "Parser returned None.")
-
-        except Exception as e:
-            self.output_panel.show_error("System Critical Error", [str(e)])
-            import traceback
-            traceback.print_exc()
-
-    # -------------------------------------------------------------------------
-    # FILE OPERATIONS
-    # -------------------------------------------------------------------------
-
     def _new_file(self):
         self.editor_panel.set_text("")
         self.current_file = None
@@ -226,8 +220,7 @@ class QuantelIDE(ctk.CTk):
 
     def _open_file(self):
         filepath = filedialog.askopenfilename(filetypes=[("Quantel Files", "*.qtl"), ("All Files", "*.*")])
-        if filepath:
-            self._open_specific_file(filepath)
+        if filepath: self._open_specific_file(filepath)
 
     def _open_specific_file(self, filepath):
         try:
@@ -259,10 +252,6 @@ class QuantelIDE(ctk.CTk):
                 self.title(f"Quantel IDE - {filepath}")
             except Exception as e:
                 self.output_panel.show_error("File Error", [f"Could not save file: {e}"])
-
-    # -------------------------------------------------------------------------
-    # VIEW TOGGLES
-    # -------------------------------------------------------------------------
 
     def _toggle_memory(self):
         if self.show_memory:
