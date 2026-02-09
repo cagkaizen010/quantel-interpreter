@@ -1,0 +1,79 @@
+# Quantel Demo: Simple Neural Network Layer Forward Pass Simulation
+
+# Import a library (placeholder for future functionality)
+import LinearAlgebra;
+import Optimizers;
+
+record Layer {
+    float32 matrix<10, 5> weights; // Layer with 10 input features, 5 output neurons
+    float32 vector<5> bias; // Bias for 5 output neurons
+}
+
+func activate(float32 scalar val) -> float32 scalar {
+    if (val > 0.0) {
+        return val; // ReLU activation
+    } else {
+        return 0.0;
+    }
+}
+
+func forwardPass(Layer l, float32 vector<10> input_data) -> float32 vector<5> {
+    float32 vector<5> output_vec;
+    int32 scalar i = 0;
+
+    repeat {
+        float32 scalar activation_sum = 0.0;
+        int32 scalar j = 0;
+        while (j < 10) {
+            activation_sum += l.weights[j, i] * input_data[j];
+            j += 1;
+        }
+        activation_sum += l.bias[i];
+        output_vec[i] = activate(activation_sum);
+        i += 1;
+    } until (i == 5);
+
+    return output_vec;
+}
+
+func main() -> void {
+    # Declare and initialize a Layer record
+    Layer my_layer;
+    my_layer.weights = [[0.1, 0.2, 0.3, 0.4, 0.5],    // Row 0 (input feature 0 weights)
+                        [0.6, 0.7, 0.8, 0.9, 1.0],    // Row 1
+                        [1.1, 1.2, 1.3, 1.4, 1.5],    // Row 2
+                        [1.6, 1.7, 1.8, 1.9, 2.0],    // Row 3
+                        [2.1, 2.2, 2.3, 2.4, 2.5],    // Row 4
+                        [2.6, 2.7, 2.8, 2.9, 3.0],    // Row 5
+                        [3.1, 3.2, 3.3, 3.4, 3.5],    // Row 6
+                        [3.6, 3.7, 3.8, 3.9, 4.0],    // Row 7
+                        [4.1, 4.2, 4.3, 4.4, 4.5],    // Row 8
+                        [4.6, 4.7, 4.8, 4.9, 5.0]];   // Row 9 (input feature 9 weights)
+
+    my_layer.bias = [0.1, 0.2, 0.3, 0.4, 0.5]; // Bias vector
+
+    # Input data (10 features)
+    float32 vector<10> input_vec = [1.0, 0.5, 1.2, 0.8, 2.0, 0.1, 0.3, 1.5, 0.7, 0.9];
+
+    # Perform forward pass
+    float32 vector<5> result_vec = forwardPass(my_layer, input_vec);
+
+    # Probe the result
+    probe(result_vec); // Output the result vector
+
+    # Example of a loop and conditional
+    int32 scalar count = 0;
+    for x in 1..5 step 1 {
+        count += 1;
+        if (count == 3) {
+            break;
+        }
+    }
+    probe(count); // Should output 3
+
+    # Intentional errors to test lexer error reporting
+    // This is an invalid token !@#$
+    // Missing semicolon
+    int32 scalar test_val = 10
+    // Another illegal character here ^
+}
