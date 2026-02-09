@@ -138,9 +138,8 @@ class QuantelIDE(ctk.CTk):
             lexer = QuantelLexer()
             tokens = list(lexer.tokenize(code))
 
-            # Display Tokens
-            token_str = "\n".join([f"Type: {t.type:<15} Value: {str(t.value):<20} Line: {t.lineno}" for t in tokens])
-            self.output_panel.write("Lexer", token_str)
+            # Let the OutputPanel handle the table formatting
+            self.output_panel.update_lexer_tab(tokens)
 
             if lexer.errors:
                 self.output_panel.show_error("Lexer Errors", lexer.errors)

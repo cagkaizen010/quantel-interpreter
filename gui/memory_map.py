@@ -1,25 +1,26 @@
 import customtkinter as ctk
 import tkinter as tk
+from tabulate import tabulate
 
 class MemoryMapPanel(ctk.CTkFrame):
     def __init__(self, parent, **kwargs):
         super().__init__(parent, **kwargs)
 
-        # Layout
+        # Layout configuration
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
         # Header Label
-        self.label = ctk.CTkLabel(self, text="Live Memory Map", font=ctk.CTkFont(weight="bold"))
-        self.label.grid(row=0, column=0, pady=(5, 0), sticky="ew")
+        self.label = ctk.CTkLabel(self, text="Live Memory Map", font=ctk.CTkFont(size=14, weight="bold"))
+        self.label.grid(row=0, column=0, pady=(10, 5), sticky="ew")
 
-        # Text Area (Read-only)
-        self.text_area = ctk.CTkTextbox(self, state="disabled", font=("Consolas", 12))
-        self.text_area.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        # Text Area (Read-only) - Use a Monospaced font for table alignment
+        self.text_area = ctk.CTkTextbox(self, state="disabled", font=("Courier New", 12), wrap="none")
+        self.text_area.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
 
     def update_map(self, environment):
         """
-        Takes the Interpreter's global_env dictionary and formats it into a table.
+        Takes the Interpreter's global_env dictionary and formats it using tabulate.
         """
         self._clear()
 
@@ -27,33 +28,41 @@ class MemoryMapPanel(ctk.CTkFrame):
             self._write("Memory is empty.")
             return
 
-        # Table Header
-        header = f"{'ADDRESS':<14} | {'NAME':<12} | {'TYPE':<10} | {'VALUE'}"
-        lines = [header, "-" * len(header)]
-
+        # 1. Prepare data rows for tabulate
+        table_data = []
         for name, val in environment.items():
-            # 1. GET ADDRESS (Simulated using Python's id())
+            # Get Address
             mem_addr = f"0x{id(val):x}"
 
-            # 2. GET TYPE
+            # Get Type (with Shape support for Tensors/Arrays)
             val_type = type(val).__name__
-            if hasattr(val, 'shape'):  # Numpy/Tensor support
-                val_type = f"Arr{val.shape}"
+            if hasattr(val, 'shape'):
+                # Formats as Arr(3,3) or Arr(3,)
+                val_type = f"Arr{tuple(val.shape)}" if len(val.shape) > 0 else "Arr()"
 
-            # 3. GET VALUE (Truncate if too long)
+            # Get Value and clean it up
             val_str = str(val).replace('\n', ' ')
-            if len(val_str) > 40:
-                val_str = val_str[:37] + "..."
+            if len(val_str) > 50:
+                val_str = val_str[:47] + "..."
 
-            # Format the row
-            row = f"{mem_addr:<14} | {name:<12} | {val_type:<10} | {val_str}"
-            lines.append(row)
+            table_data.append([mem_addr, name, val_type, val_str])
 
-        self._write("\n".join(lines))
+        # 2. Generate the table using tabulate
+        # 'github' format creates clean separators that look good in a terminal/textbox
+        formatted_table = tabulate(
+            table_data,
+            headers=["ADDRESS", "NAME", "TYPE", "VALUE"],
+            tablefmt="github",
+            stralign="left"
+        )
+
+        self._write(formatted_table)
 
     def _write(self, content):
         self.text_area.configure(state="normal")
         self.text_area.insert("0.0", content)
+        # Scroll to top after inserting
+        self.text_area.see("1.0")
         self.text_area.configure(state="disabled")
 
     def _clear(self):
