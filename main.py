@@ -56,10 +56,10 @@ def run_cli():
             print("--- Launching Quantel IDE ---")
 
             # 1. Determine target file (Default: base.qtl)
-            target_file = args.file if args.file else "base.qtl"
+            target_file = args.file if args.file else "samples/base.qtl"
 
             # 2. Create default file if missing
-            if target_file == "base.qtl" and not os.path.exists(target_file):
+            if target_file == "samples/base.qtl" and not os.path.exists(target_file):
                 print(f"Creating default file: {target_file}")
                 with open(target_file, "w") as f:
                     f.write("// Quantel Base File\nprint(\"Hello Quantel\");\n")
@@ -91,7 +91,7 @@ def run_cli():
             code_input = f.read()
     else:
         # If no args, try to run base.qtl by default in CLI mode too
-        default_cli = "base.qtl"
+        default_cli = "samples/base.qtl"
         if os.path.exists(default_cli):
             source_name = default_cli
             with open(default_cli, 'r') as f:
