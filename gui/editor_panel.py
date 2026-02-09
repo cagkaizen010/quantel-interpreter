@@ -5,14 +5,14 @@ from gui.highlighter import QuantelHighlighter
 
 
 class EditorPanel(ctk.CTkFrame):
-    def __init__(self, parent, **kwargs):
+    def __init__(self, parent, on_word_click=None, **kwargs):
         super().__init__(parent, **kwargs)
+        self.on_word_click = on_word_click
 
-        # Ensure the frame expands
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # Initialize Chlorophyll CodeView
+        # 1. Main Code View
         self.code_view = CodeView(
             self,
             lexer=QuantelHighlighter,
@@ -20,26 +20,82 @@ class EditorPanel(ctk.CTkFrame):
             color_scheme="monokai",
             undo=True
         )
-        self.code_view.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
+        self.code_view.grid(row=0, column=0, sticky="nsew")
+        self.textbox = getattr(self.code_view, '_code_view', self.code_view)
 
-        # Access the underlying Tkinter text widget
-        if hasattr(self.code_view, '_code_view'):
-            self.textbox = self.code_view._code_view
-        elif hasattr(self.code_view, 'code_view'):
-            self.textbox = self.code_view.code_view
-        else:
-            self.textbox = self.code_view
-
-        # --- NEW HIGHLIGHT STYLES ---
-        # Error: Bright Red Background with White Text
+        # 2. Configure Visual Tags
         self.textbox.tag_config("error", background="#880000", foreground="white")
-
-        # Jump: Subtle Yellow/Gold background (for Lexer table clicks)
         self.textbox.tag_config("jump_highlight", background="#4a4a30")
+        self.textbox.tag_config("search_match", background="#FFCC00", foreground="black")
 
-        # Default text
-        self.set_text("// Type your Quantel code here...\nfunc main {\n    print(\"Hello World\");\n}")
+        # 3. Minimalist Search Bar UI
+        self.search_frame = ctk.CTkFrame(self, fg_color="#333333", corner_radius=5, height=35)
+        self.search_entry = ctk.CTkEntry(
+            self.search_frame,
+            placeholder_text="Search...",
+            width=150,
+            height=25,
+            border_width=0,
+            fg_color="#222222"
+        )
+        self.search_entry.pack(side="left", padx=5, pady=5)
 
+        self.close_btn = ctk.CTkButton(
+            self.search_frame, text="×", width=20, height=20,
+            fg_color="transparent", hover_color="#555555",
+            command=self.hide_search
+        )
+        self.close_btn.pack(side="right", padx=5)
+
+        # 4. Bindings
+        self.textbox.bind("<Command-Button-1>", self._handle_jump_click)
+        self.textbox.bind("<Control-Button-1>", self._handle_jump_click)
+        self.search_entry.bind("<Return>", lambda e: self.search_text(self.search_entry.get()))
+        self.search_entry.bind("<Escape>", lambda e: self.hide_search())
+
+    # --- JUMP LOGIC ---
+    def _handle_jump_click(self, event):
+        """Finds the word under the cursor and triggers the IDE jump logic."""
+        index = self.textbox.index(f"@{event.x},{event.y}")
+        word = self.textbox.get(f"{index} wordstart", f"{index} wordend").strip()
+        if word and self.on_word_click:
+            self.on_word_click(word)
+
+    def highlight_line(self, line_number):
+        """THE MISSING METHOD: Highlights the line and scrolls to it."""
+        self.textbox.tag_remove("jump_highlight", "1.0", "end")
+        index = f"{line_number}.0"
+        self.textbox.tag_add("jump_highlight", f"{index} linestart", f"{index} lineend")
+        self.textbox.see(index)
+
+    # --- SEARCH LOGIC ---
+    def show_search(self):
+        self.search_frame.place(x=50, y=10)
+        self.search_entry.focus_set()
+
+    def hide_search(self):
+        self.search_frame.place_forget()
+        self.textbox.tag_remove("search_match", "1.0", "end")
+        self.textbox.focus_set()
+
+    def search_text(self, query):
+        self.textbox.tag_remove("search_match", "1.0", "end")
+        if not query: return
+
+        start_pos = "1.0"
+        first_match = None
+        while True:
+            start_pos = self.textbox.search(query, start_pos, stopindex="end", nocase=True)
+            if not start_pos: break
+            if not first_match: first_match = start_pos
+            end_pos = f"{start_pos}+{len(query)}c"
+            self.textbox.tag_add("search_match", start_pos, end_pos)
+            start_pos = end_pos
+
+        if first_match:
+            self.textbox.see(first_match)
+
+    # --- STANDARD HELPERS ---
     def get_text(self):
         return self.code_view.get("1.0", "end-1c")
 
@@ -48,28 +104,11 @@ class EditorPanel(ctk.CTkFrame):
         self.code_view.insert("1.0", text)
 
     def clear_indicators(self):
-        """Removes all error highlights and jump highlights."""
+        """Clears errors and jumps, but keeps search matches if bar is open."""
         self.textbox.tag_remove("error", "1.0", "end")
         self.textbox.tag_remove("jump_highlight", "1.0", "end")
 
-    def mark_error(self, line, column=None, length=1):
-        """Highlights the background of the error line/token."""
-        try:
-            if column is not None:
-                start = f"{line}.{column}"
-                end = f"{line}.{column + length}"
-            else:
-                start = f"{line}.0"
-                end = f"{line}.end"
-
-            self.textbox.tag_add("error", start, end)
-            self.textbox.see(start)
-        except Exception as e:
-            print(f"Highlighting error: {e}")
-
-    def highlight_line(self, line_number):
-        """Highlights the background when clicking items in the Output tab."""
-        self.textbox.tag_remove("jump_highlight", "1.0", "end")
-        index = f"{line_number}.0"
-        self.textbox.tag_add("jump_highlight", f"{index} linestart", f"{index} lineend")
-        self.textbox.see(index)
+    def mark_error(self, line):
+        start, end = f"{line}.0", f"{line}.end"
+        self.textbox.tag_add("error", start, end)
+        self.textbox.see(start)

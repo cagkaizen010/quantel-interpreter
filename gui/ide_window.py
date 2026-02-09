@@ -3,7 +3,7 @@ import tkinter as tk
 from tkinter import filedialog
 import io
 import contextlib
-import re  # Added for intelligent line number extraction
+import re
 
 # --- Project GUI Components ---
 from gui.editor_panel import EditorPanel
@@ -50,7 +50,8 @@ class QuantelIDE(ctk.CTk):
         self.main_pane.add(self.top_pane, stretch="always", height=600)
 
         # 3. Initialize Components
-        self.editor_panel = EditorPanel(self.top_pane)
+        # Editor with Jump to Definition callback
+        self.editor_panel = EditorPanel(self.top_pane, on_word_click=self.jump_to_definition)
         self.top_pane.add(self.editor_panel, stretch="always", width=900)
 
         self.side_container = ctk.CTkFrame(self.top_pane, corner_radius=0)
@@ -83,26 +84,41 @@ class QuantelIDE(ctk.CTk):
     # BRIDGE METHODS
     # -------------------------------------------------------------------------
 
+    def jump_to_definition(self, word):
+        """Scans code for declarations or assignments of the given word."""
+        if not word: return
+        code = self.editor_panel.get_text()
+        patterns = [rf"func\s+{word}\b", rf"var\s+{word}\b", rf"auto\s+{word}\b", rf"\b{word}\s*="]
+
+        for p in patterns:
+            match = re.search(p, code)
+            if match:
+                line_num = code.count('\n', 0, match.start()) + 1
+                self.editor_panel.highlight_line(line_num)
+                return
+
+    def _open_search_bar(self):
+        """Triggers the minimalist overlay in the EditorPanel."""
+        self.editor_panel.show_search()
+
     def highlight_editor_line(self, line_number):
         """Called when a user clicks a row in the Lexer tab."""
         self.editor_panel.highlight_line(line_number)
 
     def _get_line_from_error(self, err):
         """Intelligently finds a line number in an error object or string."""
-        # 1. Try common attribute names
         for attr in ['lineno', 'line', 'row']:
             val = getattr(err, attr, None)
             if isinstance(val, int): return val
 
-        # 2. Try to regex the string (looks for 'line 69' etc)
         match = re.search(r"line (\d+)", str(err), re.IGNORECASE)
         if match:
             return int(match.group(1))
 
-        return 1  # Fallback to 1
+        return 1
 
     # -------------------------------------------------------------------------
-    # CORE LOGIC
+    # CORE LOGIC: THE COMPILER PIPELINE
     # -------------------------------------------------------------------------
 
     def run_quantel_code(self):
@@ -165,6 +181,8 @@ class QuantelIDE(ctk.CTk):
 
                 # --- VISUALS ---
                 self.output_panel.write("AST", render_ast_tree(ast_tree))
+
+                # --- INTEGRATED TAC VIEWING ---
                 self.tac_panel.generate_and_show(ast_tree)
 
                 # --- INTERPRETER ---
@@ -198,6 +216,10 @@ class QuantelIDE(ctk.CTk):
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.quit, accelerator="Cmd+Q")
 
+        edit_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Edit", menu=edit_menu)
+        edit_menu.add_command(label="Find", command=self._open_search_bar, accelerator="Cmd+F")
+
         run_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Run", menu=run_menu)
         run_menu.add_command(label="Run Program", command=self.run_quantel_code, accelerator="F5")
@@ -211,6 +233,8 @@ class QuantelIDE(ctk.CTk):
         self.bind_all("<Command-n>", lambda e: self._new_file())
         self.bind_all("<Command-o>", lambda e: self._open_file())
         self.bind_all("<Command-s>", lambda e: self._save_file())
+        self.bind_all("<Command-f>", lambda e: self._open_search_bar())
+        self.bind_all("<Control-f>", lambda e: self._open_search_bar())
         self.bind_all("<F5>", lambda e: self.run_quantel_code())
 
     def _new_file(self):
