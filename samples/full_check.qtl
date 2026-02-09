@@ -1,0 +1,101 @@
+// ========================================================================
+//  QUANTEL SYSTEM INTEGRITY TEST
+// ========================================================================
+//  Target: Full Compiler Pipeline (Lexer -> Parser -> AST -> Interpreter)
+//  Features: Linear Algebra, Pointers, Records, Loops, & Logic.
+// ========================================================================
+
+// [TEST 1] Imports & Comments
+// Testing: IMPORT token, COMMENT regex
+import math;
+
+// [TEST 2] Record Definitions (Structs)
+// Testing: RECORD token, Block parsing
+record NeuralConfig {
+    float32 scalar learning_rate;
+    int32 scalar max_epochs;
+    bool scalar is_active;
+}
+
+// [TEST 3] Function Declaration & Logic
+// Testing: FUNC, ARROW (->), IF/ELSE, RETURN, Logical Operators (&&, ||)
+func relu_activation(float32 scalar val) -> float32 scalar {
+    // Logic: if (val > 0 AND val < 100) return val else return 0
+    if (val > 0.0 && val < 100.0) {
+        return val;
+    } else {
+        return 0.0;
+    }
+}
+
+// [TEST 4] Global Variables & Type Inference
+// Testing: AUTO token, DTYPE tokens, SCALAR/VECTOR shapes
+auto epoch_counter = 0;
+float32 scalar bias_correction = 0.01;
+
+// [TEST 5] Linear Algebra (The Core)
+// Testing: Matrix Literals, Tensor Shape Inference
+// 3x3 Weight Matrix
+auto Weights = [
+    [0.5, -0.2, 0.1],
+    [0.9,  0.0, -0.3],
+    [0.2,  0.1,  0.4]
+];
+
+// Input Vector
+auto input_vec = [1.0, 2.0, 0.5];
+
+// Bias Vector
+auto bias = [0.1, 0.1, -0.5];
+
+// [TEST 6] Mathematical Operations
+// Testing: MATMUL (@), PLUS (+), ASSIGN (=)
+// Operation: Dot Product + Broadcasting
+auto z = Weights @ input_vec + bias;
+probe(z);
+
+// [TEST 7] Advanced Array Slicing (Using RANGE)
+// Testing: LBRACKET, RANGE (..), RBRACKET
+// Since we use '..' for range, this extracts index 0 to 1
+auto subset = z[0..2];
+probe(subset);
+
+// [TEST 8] Iteration & Control Flow
+// Testing: FOR, IN, RANGE, PLUS_ASSIGN (+=)
+auto total_activation = 0.0;
+
+for i in 0..3 {
+    // Extract single element (Index Access)
+    auto val = z[i];
+
+    // Call function defined above
+    auto activated = relu_activation(val);
+
+    // Accumulate result
+    total_activation += activated;
+}
+probe(total_activation);
+
+// [TEST 9] While Loops & Break/Continue
+// Testing: WHILE, BREAK, NE (!=)
+auto safe_mode = 1;
+while (safe_mode != 0) {
+    if (total_activation > 100.0) {
+        break; // Escape loop
+    }
+    safe_mode = 0; // Terminate naturally
+}
+
+// [TEST 10] Pointers & Memory Management
+// Testing: AMPERSAND (&), POINTER Decl (*), Memory Map Visualization
+// This verifies that 'ptr' points to the same address as 'total_activation'
+float32 scalar *ptr = &total_activation;
+probe(ptr);
+
+// [TEST 11] Boolean Logic & Unary Ops
+// Testing: NOT (!), GT (>), STRING literals
+if (!safe_mode) {
+    probe("System Check: PASSED");
+} else {
+    probe("System Check: FAILED");
+}

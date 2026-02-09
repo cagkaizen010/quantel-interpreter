@@ -1,0 +1,41 @@
+// Quantel Demo: Linear Forward Pass
+// Tests: Array Literals, Matrix Multiplication (@), Slicing, Variables
+
+print("--- Initializing Neural Network ---");
+
+// 1. Define Weights (3x3 Matrix) using Array Literals
+// The interpreter will convert this to a NumPy array automatically.
+auto Weights = [
+    [0.5, -0.2, 0.1],
+    [0.1,  0.8, 0.0],
+    [-0.3, 0.2, 1.5]
+];
+
+// 2. Define Bias (Vector)
+auto bias = [0.1, 0.1, -0.5];
+
+// 3. Define Input Data (Vector)
+auto input_vec = [1.0, 2.0, 0.5];
+
+print("Data Loaded. Calculating Forward Pass...");
+
+// 4. THE CORE TEST: Matrix Math
+// This tests if the '@' operator correctly triggers np.matmul
+// And if '+' correctly broadcasts the bias
+auto z = Weights @ input_vec + bias;
+
+// 5. Probe Results
+print("Result Vector (z):");
+probe(z);
+
+// 6. Test Slicing (Get first 2 elements)
+print("Slicing Subset [0..2]:");
+auto subset = z[0..2];
+probe(subset);
+
+// 7. Manual Activation (Simulating ReLU linearly)
+// Since we don't have 'if' loops implemented in the interpreter yet,
+// we verify the calculation manually.
+print("Verifying calculation...");
+auto check = Weights[0] @ input_vec + bias[0];
+probe(check);

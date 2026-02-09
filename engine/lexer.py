@@ -1,130 +1,163 @@
-from sly import Lexer 
+# engine/lexer.py
+from sly import Lexer
 
 class QuantelLexerError(Exception):
-    """Custom exception for Quantel Lexer errors."""
     pass
 
 class QuantelLexer(Lexer):
-    # Set of token names. This is always required
-    tokens = { 
-        "NAME", "NUMBER", "DTYPE", "SHAPE_TYPE", 
-        "PLUS", "MINUS", "TIMES", "DIVIDE", "MODULO", "POWER", "DOT", "ARROW",
-        "ASSIGN", "PLUS_ASSIGN", "MINUS_ASSIGN", "TIMES_ASSIGN", "DIVIDE_ASSIGN", "AT_ASSIGN",
-        "LPAREN", "RPAREN", "LBRACKET", "RBRACKET", "LBRACE", "RBRACE", "COMMA", "SEMICOLON",
-        "EQ", "NE", "GT", "LT", "GE", "LE", "AT",
-        "IMPORT", "RECORD", "FUNC", "RETURN", 
-        "IF", "ELSE", "FOR", "IN", "WHILE",
-        "REPEAT", "UNTIL", "PROBE", "BREAK", "CONTINUE",
-        "VOID" 
+    tokens = {
+        NAME, NUMBER, STRING,
+        IMPORT, FUNC, RETURN, IF, ELSE, FOR, IN, WHILE, REPEAT, UNTIL,
+        BREAK, CONTINUE, PROBE, RECORD,
+        SCALAR, VECTOR, MATRIX, TENSOR, AUTO, # Added AUTO
+        DTYPE,
+        PLUS, MINUS, TIMES, DIVIDE, MOD, POWER, MATMUL,
+        EQ, NE, LT, GT, LE, GE,
+        AND, OR, NOT,
+        ASSIGN, PLUS_ASSIGN, MINUS_ASSIGN, TIMES_ASSIGN, DIVIDE_ASSIGN, AT_ASSIGN,
+        LPAREN, RPAREN, LBRACE, RBRACE, LBRACKET, RBRACKET,
+        COMMA, SEMICOLON, DOT, ARROW, AMPERSAND, RANGE, STEP
     }
-    # pyright: ignore[reportUndefinedVariable]
 
     def __init__(self):
-        self.errors = [] # Initialize an empty list to store errors
-        self.lineno = 1 # Initialize line number
+        self.errors = []
+        self.lineno = 1
         super().__init__()
 
-    # String containing ignored characters between tokens
     ignore = ' \t'
-
-    # Regular expression rules for tokens
-    # Basic Operators and Punctuation
-    PLUS           = r'\+'
-    MINUS          = r'-'
-    TIMES          = r'\*'
-    DIVIDE         = r'/'
-    MODULO         = r'%'
-    POWER          = r'\^'
-    DOT            = r'\.'
-    ARROW          = r'->' # For function signatures
-    LPAREN         = r'\('
-    RPAREN         = r'\)'
-    LBRACKET       = r'\['
-    RBRACKET       = r'\]'
-    LBRACE         = r'\{'
-    RBRACE         = r'\}'
-    COMMA          = r','
-    SEMICOLON      = r';'
-    AT             = r'@' # For matrix multiplication and possibly special types
-
-    # Assignment Operators
-    PLUS_ASSIGN    = r'\+='
-    MINUS_ASSIGN   = r'-='
-    TIMES_ASSIGN   = r'\*='
-    DIVIDE_ASSIGN  = r'/='
-    AT_ASSIGN      = r'@='
-    ASSIGN         = r'='
-
-    # Comparison Operators
-    EQ             = r'=='
-    NE             = r'!='
-    GE             = r'>='
-    LE             = r'<='
-    GT             = r'>'
-    LT             = r'<'
-
-    # Keywords (order matters for longer keywords before shorter prefixes)
-    IMPORT          = r'import'
-    RECORD          = r'record'
-    FUNC            = r'func'
-    RETURN          = r'return'
-    IF              = r'if'
-    ELSE            = r'else'
-    FOR             = r'for'
-    IN              = r'in'
-    WHILE           = r'while'
-    REPEAT          = r'repeat'
-    UNTIL           = r'until'
-    PROBE           = r'probe'
-    BREAK           = r'break'
-    CONTINUE        = r'continue'
-    VOID            = r'void'
-
-
-    # Data Types
-    # Order matters: longer (e.g., float32) before shorter prefixes (e.g., float) if there was one
-    DTYPE = r'float32|float64|float16|int32|int64|bool'
-
-    # Shape Types (assuming simple forms for now, more complex regex for nested <> or [] if needed)
-    # This might need refinement based on exact grammar of <num> within <> and []
-    SHAPE_TYPE = r'scalar|vector<\d+>|matrix\[\d+,\s*\d+\]|tensor<[\d,\s]+>'
-
-
-    # Numbers (Integers and Floats)
-    @_(r'\d+\.\d*')
-    def NUMBER_FLOAT(self, t): # Renamed to avoid clash with NUMBER token name for simplicity
-        t.type = 'NUMBER'
-        t.value = float(t.value)
-        return t
-
-    @_(r'\d+')
-    def NUMBER_INT(self, t): # Renamed to avoid clash
-        t.type = 'NUMBER'
-        t.value = int(t.value)
-        return t
-
-    # Identifiers (NAME) - must be after keywords
-    @_(r'[a-zA-Z_][a-zA-Z0-9_]*')
-    def NAME(self, t):
-        # SLY usually matches longest regex first, so explicit keyword tokens
-        # defined before NAME will be matched first.
-        return t
 
     # Line number tracking
     @_(r'\n+')
     def ignore_newline(self, t):
         self.lineno += len(t.value)
-    
-    # Comments (must be before any rules that might match the # character)
-    @_(r'#.*')
-    def COMMENT(self, t):
-        pass # Discard comments
 
-    # Error handling rule
+    # Comments
+    @_(r'\#.*|//.*|/\*[\s\S]*?\*/') # Added multiline support just in case
+    def COMMENT(self, t):
+        pass
+
+    # --- PRIORITY 1: Compound Operators ---
+    @_(r'==')
+    def EQ(self, t): return t
+    @_(r'!=')
+    def NE(self, t): return t
+    @_(r'<=')
+    def LE(self, t): return t
+    @_(r'>=')
+    def GE(self, t): return t
+    @_(r'\+=')
+    def PLUS_ASSIGN(self, t): return t
+    @_(r'-=')
+    def MINUS_ASSIGN(self, t): return t
+    @_(r'\*=')
+    def TIMES_ASSIGN(self, t): return t
+    @_(r'/=')
+    def DIVIDE_ASSIGN(self, t): return t
+    @_(r'@=')
+    def AT_ASSIGN(self, t): return t
+    @_(r'->')
+    def ARROW(self, t): return t
+    @_(r'\.\.')
+    def RANGE(self, t): return t
+    @_(r'&&')
+    def AND(self, t): return t
+    @_(r'\|\|')
+    def OR(self, t): return t
+
+    # --- PRIORITY 2: Single Character Operators ---
+    @_(r'=')
+    def ASSIGN(self, t): return t
+    @_(r'<')
+    def LT(self, t): return t
+    @_(r'>')
+    def GT(self, t): return t
+    @_(r'\+')
+    def PLUS(self, t): return t
+    @_(r'-')
+    def MINUS(self, t): return t
+    @_(r'\*')
+    def TIMES(self, t): return t
+    @_(r'/')
+    def DIVIDE(self, t): return t
+    @_(r'%')
+    def MOD(self, t): return t
+    @_(r'\^')
+    def POWER(self, t): return t
+    @_(r'@')
+    def MATMUL(self, t): return t
+    @_(r'!')
+    def NOT(self, t): return t
+    @_(r'&')
+    def AMPERSAND(self, t): return t
+
+    # --- Punctuation ---
+    LPAREN = r'\('
+    RPAREN = r'\)'
+    LBRACE = r'\{'
+    RBRACE = r'\}'
+    LBRACKET = r'\['
+    RBRACKET = r'\]'
+    COMMA = r','
+    SEMICOLON = r';'
+    DOT = r'\.'
+
+    # --- PRIORITY 3: Numbers ---
+    @_(r'\d+\.\d+')
+    def FLOAT_NUMBER(self, t):
+        t.value = float(t.value)
+        t.type = 'NUMBER'
+        return t
+
+    @_(r'\d+')
+    def INT_NUMBER(self, t):
+        t.value = int(t.value)
+        t.type = 'NUMBER'
+        return t
+
+    # --- Keywords & Identifiers ---
+    keywords = {
+        'import': 'IMPORT',
+        'func': 'FUNC',
+        'return': 'RETURN',
+        'if': 'IF',
+        'else': 'ELSE',
+        'for': 'FOR',
+        'in': 'IN',
+        'step': 'STEP',
+        'while': 'WHILE',
+        'repeat': 'REPEAT',
+        'until': 'UNTIL',
+        'break': 'BREAK',
+        'continue': 'CONTINUE',
+        'probe': 'PROBE',
+        'record': 'RECORD',
+        'scalar': 'SCALAR',
+        'vector': 'VECTOR',
+        'matrix': 'MATRIX',
+        'tensor': 'TENSOR',
+        'auto': 'AUTO',
+        'float32': 'DTYPE',
+        'float64': 'DTYPE',
+        'int32': 'DTYPE',
+        'int64': 'DTYPE',
+        'bool': 'DTYPE',
+    }
+
+    @_(r'[a-zA-Z_][a-zA-Z0-9_]*')
+    def NAME(self, t):
+        t.type = self.keywords.get(t.value, 'NAME')
+        return t
+
+    @_(r'\".*?\"')
+    def STRING(self, t):
+        t.value = t.value[1:-1]
+        return t
+
     def error(self, t):
-        self.errors.append(f"Token Type: LEX_ERROR, Value: '{t.value[0]}', Line: {self.lineno}, Column: {self.index}")
+        msg = f"Lexer Error: Illegal character '{t.value[0]}' at line {self.lineno}"
+        self.errors.append(msg)
+        print(msg)
         self.index += 1
-        # No longer raising QuantelLexerError here, allowing lexer to continue
-    
+
     def get_errors(self):
         return self.errors

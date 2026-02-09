@@ -72,7 +72,6 @@ func main() -> void {
     probe(count); // Should output 3
 
     # Intentional errors to test lexer error reporting
-    // This is an invalid token !@#$
     // Missing semicolon
     int32 scalar test_val = 10
     // Another illegal character here ^
