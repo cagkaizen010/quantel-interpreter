@@ -193,6 +193,12 @@ class QuantelParser(Parser):
         return ast.RecordAccess(p.target, p.NAME, lineno=p.lineno)
 
     # --- Expressions ---
+    @_('BOOLEAN')
+    def expr(self, p):
+        # Convert the string "true" or "false" to a Python boolean
+        val = True if p.BOOLEAN == 'true' else False
+        return ast.Literal(val, lineno=p.lineno)
+
     @_('expr PLUS expr', 'expr MINUS expr', 'expr TIMES expr', 'expr DIVIDE expr',
        'expr MOD expr', 'expr MATMUL expr', 'expr POWER expr')
     def expr(self, p):

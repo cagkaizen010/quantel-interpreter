@@ -1,5 +1,3 @@
-# gui/utils.py
-
 def render_ast_tree(node, prefix="", is_last=True):
     """
     Recursively converts a Python object (AST) into a pretty ASCII tree string.

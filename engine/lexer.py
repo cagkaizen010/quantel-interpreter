@@ -1,16 +1,12 @@
-# engine/lexer.py
 from sly import Lexer
-
-class QuantelLexerError(Exception):
-    pass
 
 class QuantelLexer(Lexer):
     tokens = {
         NAME, NUMBER, STRING,
         IMPORT, FUNC, RETURN, IF, ELSE, FOR, IN, WHILE, REPEAT, UNTIL,
         BREAK, CONTINUE, PROBE, RECORD,
-        SCALAR, VECTOR, MATRIX, TENSOR, AUTO, # Added AUTO
-        DTYPE,
+        SCALAR, VECTOR, MATRIX, TENSOR, AUTO,
+        DTYPE, BOOLEAN,
         PLUS, MINUS, TIMES, DIVIDE, MOD, POWER, MATMUL,
         EQ, NE, LT, GT, LE, GE,
         AND, OR, NOT,
@@ -19,76 +15,49 @@ class QuantelLexer(Lexer):
         COMMA, SEMICOLON, DOT, ARROW, AMPERSAND, RANGE, STEP
     }
 
-    def __init__(self):
-        self.errors = []
-        self.lineno = 1
-        super().__init__()
-
     ignore = ' \t'
 
-    # Line number tracking
+    def __init__(self):
+        super().__init__()
+        self.errors = []
+        self.lineno = 1
+
     @_(r'\n+')
     def ignore_newline(self, t):
         self.lineno += len(t.value)
 
-    # Comments
-    @_(r'\#.*|//.*|/\*[\s\S]*?\*/') # Added multiline support just in case
+    @_(r'\#.*|//.*|/\*[\s\S]*?\*/')
     def COMMENT(self, t):
         pass
 
-    # --- PRIORITY 1: Compound Operators ---
-    @_(r'==')
-    def EQ(self, t): return t
-    @_(r'!=')
-    def NE(self, t): return t
-    @_(r'<=')
-    def LE(self, t): return t
-    @_(r'>=')
-    def GE(self, t): return t
-    @_(r'\+=')
-    def PLUS_ASSIGN(self, t): return t
-    @_(r'-=')
-    def MINUS_ASSIGN(self, t): return t
-    @_(r'\*=')
-    def TIMES_ASSIGN(self, t): return t
-    @_(r'/=')
-    def DIVIDE_ASSIGN(self, t): return t
-    @_(r'@=')
-    def AT_ASSIGN(self, t): return t
-    @_(r'->')
-    def ARROW(self, t): return t
-    @_(r'\.\.')
-    def RANGE(self, t): return t
-    @_(r'&&')
-    def AND(self, t): return t
-    @_(r'\|\|')
-    def OR(self, t): return t
+    # --- Compound Operators ---
+    EQ = r'=='
+    NE = r'!='
+    LE = r'<='
+    GE = r'>='
+    PLUS_ASSIGN = r'\+='
+    MINUS_ASSIGN = r'-='
+    TIMES_ASSIGN = r'\*='
+    DIVIDE_ASSIGN = r'/='
+    AT_ASSIGN = r'@='
+    ARROW = r'->'
+    RANGE = r'\.\.'
+    AND = r'&&'
+    OR = r'\|\|'
 
-    # --- PRIORITY 2: Single Character Operators ---
-    @_(r'=')
-    def ASSIGN(self, t): return t
-    @_(r'<')
-    def LT(self, t): return t
-    @_(r'>')
-    def GT(self, t): return t
-    @_(r'\+')
-    def PLUS(self, t): return t
-    @_(r'-')
-    def MINUS(self, t): return t
-    @_(r'\*')
-    def TIMES(self, t): return t
-    @_(r'/')
-    def DIVIDE(self, t): return t
-    @_(r'%')
-    def MOD(self, t): return t
-    @_(r'\^')
-    def POWER(self, t): return t
-    @_(r'@')
-    def MATMUL(self, t): return t
-    @_(r'!')
-    def NOT(self, t): return t
-    @_(r'&')
-    def AMPERSAND(self, t): return t
+    # --- Single Character Operators ---
+    ASSIGN = r'='
+    LT = r'<'
+    GT = r'>'
+    PLUS = r'\+'
+    MINUS = r'-'
+    TIMES = r'\*'
+    DIVIDE = r'/'
+    MOD = r'%'
+    POWER = r'\^'
+    MATMUL = r'@'
+    NOT = r'!'
+    AMPERSAND = r'&'
 
     # --- Punctuation ---
     LPAREN = r'\('
@@ -101,7 +70,6 @@ class QuantelLexer(Lexer):
     SEMICOLON = r';'
     DOT = r'\.'
 
-    # --- PRIORITY 3: Numbers ---
     @_(r'\d+\.\d+')
     def FLOAT_NUMBER(self, t):
         t.value = float(t.value)
@@ -114,7 +82,6 @@ class QuantelLexer(Lexer):
         t.type = 'NUMBER'
         return t
 
-    # --- Keywords & Identifiers ---
     keywords = {
         'import': 'IMPORT',
         'func': 'FUNC',
@@ -136,11 +103,16 @@ class QuantelLexer(Lexer):
         'matrix': 'MATRIX',
         'tensor': 'TENSOR',
         'auto': 'AUTO',
+        # dtypes
         'float32': 'DTYPE',
         'float64': 'DTYPE',
+        'float16': 'DTYPE',
         'int32': 'DTYPE',
         'int64': 'DTYPE',
         'bool': 'DTYPE',
+        # Boolean Literals
+        'true': 'BOOLEAN',
+        'false': 'BOOLEAN',
     }
 
     @_(r'[a-zA-Z_][a-zA-Z0-9_]*')
@@ -160,4 +132,4 @@ class QuantelLexer(Lexer):
         self.index += 1
 
     def get_errors(self):
-        return self.errors
+        return getattr(self, 'errors', [])

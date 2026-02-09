@@ -14,13 +14,16 @@ from gui.utils import render_ast_tree
 # --- Engine Imports ---
 from engine.lexer import QuantelLexer
 
-# Safe Import for Parser/Interpreter (prevents crash if files are missing)
+# Safe Import for Parser/Interpreter/Optimizer
+# (Prevents crash if files are still being written)
 try:
     from engine.parser import QuantelParser
     from engine.interpreter import QuantelInterpreter
+    from engine.optimizer import QuantelOptimizer
 except ImportError:
     QuantelParser = None
     QuantelInterpreter = None
+    QuantelOptimizer = None
 
 
 class QuantelIDE(ctk.CTk):
@@ -37,8 +40,10 @@ class QuantelIDE(ctk.CTk):
         self.current_file = None
         self.show_memory = True
         self.show_tac = True
+        self.interpreter_instance = None  # Keep reference for memory inspection
 
-        # 2. Main Layout (PanedWindows for Resizability)
+        # 2. Main Layout
+
         # Vertical Split: Top (Editor+Tools) / Bottom (Output)
         self.main_pane = tk.PanedWindow(self, orient=tk.VERTICAL, bg="#2b2b2b", bd=0, sashwidth=6)
         self.main_pane.pack(fill=tk.BOTH, expand=True)
@@ -66,7 +71,7 @@ class QuantelIDE(ctk.CTk):
         self.memory_panel = MemoryMapPanel(self.side_container)
         self.memory_panel.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
 
-        # Right Bottom: TAC Viewer
+        # Right Bottom: TAC Viewer (White Box)
         self.tac_panel = TACViewerPanel(self.side_container)
         self.tac_panel.grid(row=1, column=0, sticky="nsew", padx=2, pady=2)
 
@@ -153,42 +158,60 @@ class QuantelIDE(ctk.CTk):
                 self.output_panel.show_error("Parser Errors", parser.errors)
                 return
 
-            if ast_tree:
-                # Display AST
-                self.output_panel.write("AST", render_ast_tree(ast_tree))
+            # --- PHASE 2.1: SEMANTIC ANALYSIS ---
+            try:
+                from engine.semantic_analyzer import SemanticAnalyzer, SemanticError
+                analyzer = SemanticAnalyzer()
+                analyzer.analyze(ast_tree)
 
-                # Update White Box (TAC)
+                # Update the GUI Symbols Tab
+                symbol_data = analyzer.get_symbol_table_text()
+                self.output_panel.write("Symbols", symbol_data)
+            except SemanticError as e:
+                self.output_panel.show_error("Semantic Error", [str(e)])
+                return
+            except Exception as e:
+                self.output_panel.show_error("Analyzer Crash", [str(e)])
+                return
+
+            if ast_tree:
+                # --- PHASE 2.5: OPTIMIZER ---
+                if QuantelOptimizer:
+                    optimizer = QuantelOptimizer()
+                    optimized_ast = optimizer.optimize(ast_tree)
+
+                    if optimizer.changed:
+                        self.output_panel.write("Output",
+                                                "[Optimizer] Code optimized (Constant Propagation / Folding).\n",
+                                                clear_first=False)
+                    ast_tree = optimized_ast
+
+                # --- VISUALIZATION ---
+                self.output_panel.write("AST", render_ast_tree(ast_tree))
                 self.tac_panel.generate_and_show(ast_tree)
 
                 # --- PHASE 3: INTERPRETER ---
                 if QuantelInterpreter:
                     self.output_panel.write("Output", "--- Running Program ---\n", clear_first=False)
+                    self.interpreter_instance = QuantelInterpreter()
 
-                    interpreter = QuantelInterpreter()
-
-                    # Capture Standard Output
                     f = io.StringIO()
                     try:
                         with contextlib.redirect_stdout(f):
-                            interpreter.interpret(ast_tree)
+                            self.interpreter_instance.interpret(ast_tree)
 
-                        # Show Output
                         result_output = f.getvalue()
                         self.output_panel.write("Output", result_output + "\n[Finished]", clear_first=False)
-
-                        # Update Memory Map
-                        self.memory_panel.update_map(interpreter.global_env)
+                        self.memory_panel.update_map(self.interpreter_instance.global_env)
 
                     except Exception as e:
-                        # Runtime Errors
                         self.output_panel.show_error("Runtime Error", [str(e)])
                 else:
                     self.output_panel.write("Errors", "Interpreter module missing.")
             else:
-                self.output_panel.write("Errors", "Parser returned None (Unknown Syntax Error).")
+                self.output_panel.write("Errors", "Parser returned None.")
 
         except Exception as e:
-            # Catch-all for system crashes
             self.output_panel.show_error("System Critical Error", [str(e)])
             import traceback
             traceback.print_exc()

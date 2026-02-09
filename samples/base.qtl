@@ -1,41 +1,80 @@
-// Quantel Demo: Linear Forward Pass
-// Tests: Array Literals, Matrix Multiplication (@), Slicing, Variables
+// ========================================================================
+//  QUANTEL SYSTEM INTEGRITY TEST
+//  Validation: Fixed for strict (DTYPE + SHAPE) requirement
+// ========================================================================
 
-print("--- Initializing Neural Network ---");
+import math;
 
-// 1. Define Weights (3x3 Matrix) using Array Literals
-// The interpreter will convert this to a NumPy array automatically.
-auto Weights = [
+// [TEST 2] Record Definitions
+// Rules: RECORD NAME LBRACE decl_list RBRACE
+record NeuralConfig {
+    float32 scalar learning_rate;
+    int32 scalar max_epochs;
+    bool scalar is_active;
+}
+
+// [TEST 3] Function Declaration
+// Rules: FUNC NAME ... ARROW dtype shape_type block
+func relu_activation(float32 scalar val) -> float32 scalar {
+    if (val > 0.0 && val < 100.0) {
+        return val;
+    } else {
+        return 0.0;
+    }
+}
+
+// [TEST 4] Global Variables
+// Rules: dtype shape_type NAME ASSIGN expr SEMICOLON
+int32 scalar epoch_counter = 0;
+float32 scalar bias_correction = 0.01;
+
+// [TEST 5] Linear Algebra
+// Rules: matrix < num, num > and vector < num >
+float32 matrix<3,3> Weights = [
     [0.5, -0.2, 0.1],
-    [0.1,  0.8, 0.0],
-    [-0.3, 0.2, 1.5]
+    [0.9,  0.0, -0.3],
+    [0.2,  0.1,  0.4]
 ];
 
-// 2. Define Bias (Vector)
-auto bias = [0.1, 0.1, -0.5];
+float32 vector<3> input_vec = [1.0, 2.0, 0.5];
+float32 vector<3> bias = [0.1, 0.1, -0.5];
 
-// 3. Define Input Data (Vector)
-auto input_vec = [1.0, 2.0, 0.5];
-
-print("Data Loaded. Calculating Forward Pass...");
-
-// 4. THE CORE TEST: Matrix Math
-// This tests if the '@' operator correctly triggers np.matmul
-// And if '+' correctly broadcasts the bias
+// [TEST 6] Mathematical Operations
+// Using AUTO for inference (Parser Rule 3)
 auto z = Weights @ input_vec + bias;
-
-// 5. Probe Results
-print("Result Vector (z):");
 probe(z);
 
-// 6. Test Slicing (Get first 2 elements)
-print("Slicing Subset [0..2]:");
+// [TEST 7] Slicing
 auto subset = z[0..2];
-probe(subset);
 
-// 7. Manual Activation (Simulating ReLU linearly)
-// Since we don't have 'if' loops implemented in the interpreter yet,
-// we verify the calculation manually.
-print("Verifying calculation...");
-auto check = Weights[0] @ input_vec + bias[0];
-probe(check);
+// [TEST 8] Iteration
+float32 scalar total_activation = 0.0;
+
+for i in 0..3 {
+    // Note: 'val' and 'activated' use auto for simplicity
+    auto val = z[i];
+    auto activated = relu_activation(val);
+    total_activation += activated;
+}
+probe(total_activation);
+
+// [TEST 9] Control Flow
+int32 scalar safe_mode = 1;
+while (safe_mode != 0) {
+    if (total_activation > 100.0) {
+        break; 
+    }
+    safe_mode = 0; 
+}
+
+// [TEST 10] Pointers
+// Rule: dtype shape_type TIMES NAME ASSIGN AMPERSAND NAME SEMICOLON
+float32 scalar *ptr = &total_activation;
+probe(ptr);
+
+// [TEST 11] Logic
+if (safe_mode == 0) {
+    probe("System Check: PASSED");
+} else {
+    probe("System Check: FAILED");
+}

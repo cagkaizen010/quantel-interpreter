@@ -1,7 +1,5 @@
-# gui/output_panel.py
 import customtkinter as ctk
 import tkinter as tk
-
 
 class OutputPanel(ctk.CTkFrame):
     def __init__(self, parent, **kwargs):
@@ -13,9 +11,9 @@ class OutputPanel(ctk.CTkFrame):
         self.tab_view = ctk.CTkTabview(self)
         self.tab_view.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
 
-        # Create Tabs
+        # Create Tabs - Added "Symbols" to this list
         self.tabs = {}
-        for name in ["Output", "Lexer", "AST", "Errors", "Debug"]:
+        for name in ["Output", "Lexer", "AST", "Symbols", "Errors", "Debug"]:
             self.tab_view.add(name)
             self.tab_view.tab(name).grid_columnconfigure(0, weight=1)
             self.tab_view.tab(name).grid_rowconfigure(0, weight=1)
@@ -28,9 +26,10 @@ class OutputPanel(ctk.CTkFrame):
             # Store reference
             self.tabs[name] = tb
 
-        # Custom colors
+        # Custom colors for better scannability
         self.tabs["Lexer"].configure(text_color="#A9B7C6")
         self.tabs["AST"].configure(text_color="#FFC66D")
+        self.tabs["Symbols"].configure(text_color="#58D68D") # Fresh green for symbols
         self.tabs["Errors"].configure(text_color="#FF5555")
 
     def write(self, tab_name, content, clear_first=True):

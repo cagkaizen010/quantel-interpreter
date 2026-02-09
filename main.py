@@ -7,13 +7,16 @@ import os
 from engine.lexer import QuantelLexer
 from engine.parser import QuantelParser
 import engine.ast as ast
-# NEW: Import the interpreter so we can run the code
+
+# NEW: Import the new modules you've built
+from engine.semantic_analyzer import SemanticAnalyzer, SemanticError
+from engine.optimizer import QuantelOptimizer
+from engine.tac_generator import TACGenerator
 from engine.interpreter import QuantelInterpreter
 
 # --- GUI Import ---
 try:
     from gui.ide_window import QuantelIDE
-
     GUI_AVAILABLE = True
     GUI_ERROR = None
 except ImportError as e:
@@ -22,9 +25,7 @@ except ImportError as e:
 
 
 def ast_to_dict(node):
-    """
-    Recursively converts AST nodes to a dictionary for JSON printing.
-    """
+    """Recursively converts AST nodes to a dictionary for JSON printing."""
     if node is None: return None
     if isinstance(node, list): return [ast_to_dict(n) for n in node]
     if isinstance(node, (str, int, float, bool)): return node
@@ -46,7 +47,8 @@ def run_cli():
     parser.add_argument("-s", "--string", help="Process a raw code string directly")
     parser.add_argument("-g", "--gui", action="store_true", help="Launch the Quantel IDE")
     parser.add_argument("-p", "--parse", action="store_true", help="Parse and print AST (JSON)")
-    parser.add_argument("-l", "--lex", action="store_true", help="Tokenize and print tokens (Debug)")
+    parser.add_argument("-l", "--lex", action="store_true", help="Tokenize and print tokens")
+    parser.add_argument("-t", "--tac", action="store_true", help="Show Optimized Three-Address Code")
 
     args = parser.parse_args()
 
@@ -54,23 +56,12 @@ def run_cli():
     if args.gui:
         if GUI_AVAILABLE:
             print("--- Launching Quantel IDE ---")
-
-            # 1. Determine target file (Default: base.qtl)
             target_file = args.file if args.file else "samples/base.qtl"
-
-            # 2. Create default file if missing
             if target_file == "samples/base.qtl" and not os.path.exists(target_file):
-                print(f"Creating default file: {target_file}")
+                os.makedirs("samples", exist_ok=True)
                 with open(target_file, "w") as f:
-                    f.write("// Quantel Base File\nprint(\"Hello Quantel\");\n")
-
-            # 3. Launch App
-            try:
-                app = QuantelIDE(file_path=target_file)
-            except TypeError:
-                print("Note: IDE does not accept file args. Opening empty.")
-                app = QuantelIDE()
-
+                    f.write("// Quantel Base File\nvar x: int32 = 10 + 20;\nprobe x;\n")
+            app = QuantelIDE(file_path=target_file)
             app.mainloop()
         else:
             print(f"Error: Could not launch GUI.\nDetails: {GUI_ERROR}")
@@ -90,62 +81,63 @@ def run_cli():
         with open(args.file, 'r') as f:
             code_input = f.read()
     else:
-        # If no args, try to run base.qtl by default in CLI mode too
         default_cli = "samples/base.qtl"
         if os.path.exists(default_cli):
             source_name = default_cli
             with open(default_cli, 'r') as f:
                 code_input = f.read()
-            print(f"--- No args provided, running {default_cli} ---")
         else:
             parser.print_help()
             return
 
-    # Initialize Lexer
+    # --- 1. LEXING ---
     lexer = QuantelLexer()
+    tokens = lexer.tokenize(code_input)
 
-    # --- MODE 2: Lexing Only ---
     if args.lex:
-        print(f"--- Scanning: {source_name} ---")
-        tokens = lexer.tokenize(code_input)
-        for tok in tokens:
-            print(f"Token: {tok.type:<15} Value: {str(tok.value):<20} Line: {tok.lineno}")
-        if lexer.errors:
-            print("\n!!! Lexer Errors !!!")
-            for err in lexer.errors: print(err)
+        for tok in tokens: print(tok)
         return
 
-    # --- MODE 3: Parsing & Execution ---
-    print(f"--- Parsing: {source_name} ---")
+    # --- 2. PARSING ---
+    print(f"--- Processing: {source_name} ---")
     quantel_parser = QuantelParser()
-    tree = quantel_parser.parse(lexer.tokenize(code_input))
+    tree = quantel_parser.parse(tokens)
 
-    if lexer.errors:
-        print("\n!!! Parsing Aborted: Lexer Errors Found !!!")
-        for err in lexer.errors: print(f" - {err}")
-        return
-
-    if quantel_parser.errors:
+    if quantel_parser.errors or not tree:
         print("\n!!! Parser Errors Found !!!")
         for err in quantel_parser.errors: print(f" - {err}")
         return
 
-    if tree:
-        # Print AST only if requested
-        if args.parse:
-            print("\n--- AST ---")
-            print(json.dumps(ast_to_dict(tree), indent=2))
+    # --- 3. SEMANTIC ANALYSIS ---
+    # We do this before optimization to ensure the original code is valid
+    print("\n--- Semantic Analysis ---")
+    analyzer = SemanticAnalyzer()
+    try:
+        analyzer.analyze(tree) # This prints your Symbol Table
+    except SemanticError as e:
+        print(f"❌ SEMANTIC ERROR: {e}")
+        return
 
-        # --- INTERPRETER EXECUTION ---
-        print("\n--- Executing Program ---")
-        interpreter = QuantelInterpreter()
-        try:
-            interpreter.interpret(tree)
-            print("\n[Program Finished Successfully]")
-        except Exception as e:
-            print(f"\nruntime error: {e}")
-    else:
-        print("\nError: Parser returned None.")
+    # --- 4. OPTIMIZATION ---
+    print("\n--- Optimizing AST ---")
+    optimizer = QuantelOptimizer()
+    optimized_tree = optimizer.optimize(tree)
+
+    # --- 5. TAC GENERATION ---
+    if args.tac:
+        print("\n--- Three-Address Code (Optimized) ---")
+        tac_gen = TACGenerator()
+        print(tac_gen.generate(optimized_tree))
+
+    # --- 6. EXECUTION (Interpreter) ---
+    print("\n--- Executing Program ---")
+    interpreter = QuantelInterpreter()
+    try:
+        # We run the optimized tree for better performance
+        interpreter.interpret(optimized_tree)
+        print("\n[Program Finished Successfully]")
+    except Exception as e:
+        print(f"\nRuntime Error: {e}")
 
 
 if __name__ == "__main__":
