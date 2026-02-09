@@ -1,6 +1,7 @@
 # quantel-interpreter
 
 **Quantel Programming Language**
+
 Quantel is a programming language designed for AI and machine learning development. It utilizes a transparent architecture that exposes internal compiler states and execution data.
 
 **Compiler and Optimizer**
