@@ -1,4 +1,4 @@
-# engine/parser.py
+import difflib
 from sly import Parser
 from engine.lexer import QuantelLexer
 import engine.ast as ast
@@ -7,7 +7,7 @@ import engine.ast as ast
 class QuantelParser(Parser):
     tokens = QuantelLexer.tokens
 
-    # Precedence Rules
+    # --- Precedence Rules ---
     precedence = (
         ('right', 'ASSIGN', 'PLUS_ASSIGN', 'MINUS_ASSIGN', 'TIMES_ASSIGN', 'DIVIDE_ASSIGN', 'AT_ASSIGN'),
         ('left', 'OR'),
@@ -23,12 +23,83 @@ class QuantelParser(Parser):
 
     def __init__(self):
         self.errors = []
+        self.source_lines = []
 
+    def parse(self, tokens, source_text=None):
+        """
+        Parses tokens into an AST.
+        source_text: The raw code string (REQUIRED for error context).
+        """
+        if source_text:
+            # Splitlines handles \n, \r\n, and \r automatically
+            self.source_lines = source_text.splitlines()
+
+        return super().parse(tokens)
+
+    # ==========================================
+    #       SMART ERROR REPORTING SYSTEM
+    # ==========================================
     def error(self, p):
-        if p:
-            self.errors.append(f"Syntax error at token '{p.value}' (type: {p.type}) on line {p.lineno}")
-        else:
-            self.errors.append("Syntax error at EOF")
+        if not p:
+            self.errors.append("Syntax Error: Unexpected End of File (Did you forget a '}' or ';'? )")
+            return
+
+        # 1. Get Line Content
+        # p.lineno is 1-based, list index is 0-based
+        line_idx = p.lineno - 1
+
+        current_line = "<Source not available>"
+        if 0 <= line_idx < len(self.source_lines):
+            current_line = self.source_lines[line_idx].strip()
+
+        # 2. Analyze Context for Hints
+        suggestion = self._analyze_context(p, current_line)
+
+        # 3. Format Error Message
+        error_msg = (
+            f"\n[!] SYNTAX ERROR | Line {p.lineno}\n"
+            f"    Context: {current_line}\n"
+            f"    Token:   '{p.value}' ({p.type})\n"
+            f"    Hint:    {suggestion}"
+        )
+
+        self.errors.append(error_msg)
+        print(error_msg)
+
+        # 4. Trigger Panic Mode Recovery
+        # This tells sly to discard tokens until it finds a synchronization point
+        self.restart()
+
+    def _analyze_context(self, p, line):
+        """
+        analyzes the crash site to provide a human-readable hint.
+        """
+        # A. Check for Keyword Typos (e.g. reco5rd -> record)
+        keywords = ['func', 'import', 'return', 'if', 'else', 'while', 'for', 'record', 'scalar', 'vector', 'matrix']
+
+        # If the token is an identifier, see if it looks like a keyword
+        if p.type == 'ID':
+            matches = difflib.get_close_matches(p.value, keywords, n=1, cutoff=0.7)
+            if matches:
+                return f"Did you mean '{matches[0]}'? Typo detected."
+
+        # B. Check for common structural errors
+        if p.type == 'LBRACE':
+            if 'record' in line or 'struct' in line:
+                return "Invalid Record syntax. Expected: 'record Name { ... }'"
+            return "Unexpected '{'. Missing a semicolon on previous line?"
+
+        if p.type == 'LPAREN':
+            if 'func' in line or 'function' in line:
+                return "Invalid Function syntax. Expected: 'func Name(...) -> type { ... }'"
+            if 'if' in line or 'while' in line:
+                return "Check your condition syntax."
+
+        return "Check for missing semicolons, unbalanced parentheses, or invalid types."
+
+    # ==========================================
+    #             GRAMMAR RULES
+    # ==========================================
 
     # --- Program ---
     @_('import_list statements')
@@ -56,11 +127,18 @@ class QuantelParser(Parser):
     def statements(self, p):
         return [p.statement]
 
+    # Added 'error_stmt' here for recovery
     @_('declaration', 'assignment', 'control_flow', 'probe_stmt',
        'func_decl', 'record_decl', 'block', 'return_stmt',
-       'break_stmt', 'continue_stmt', 'expr_stmt')
+       'break_stmt', 'continue_stmt', 'expr_stmt', 'error_stmt')
     def statement(self, p):
         return p[0]
+
+    # --- ERROR RECOVERY RULE ---
+    # Catches errors and syncs to the next semicolon or closing brace
+    @_('error SEMICOLON', 'error RBRACE')
+    def error_stmt(self, p):
+        return None
 
     # --- Declarations ---
 
@@ -77,7 +155,6 @@ class QuantelParser(Parser):
     # 3. Auto Inference: auto x = [1, 2, 3];
     @_('AUTO ID ASSIGN expr SEMICOLON')
     def declaration(self, p):
-        # We pass 'auto' as dtype and None as shape_type to indicate inference is needed
         return ast.VarDecl('auto', None, p.ID, p.expr, lineno=p.lineno)
 
     # 4. Custom Type: Layer my_layer;
@@ -172,17 +249,16 @@ class QuantelParser(Parser):
         return ast.Identifier(p.ID, lineno=p.lineno)
 
     # Array Access: x[i]
-    # 1. Standard Array Access: x[i]
     @_('target LBRACKET expr RBRACKET')
     def target(self, p):
         return ast.ArrayAccess(p.target, p.expr, lineno=p.lineno)
 
-    # 2. 2D Array Access: x[i, j]
+    # 2D Array Access: x[i, j]
     @_('target LBRACKET expr COMMA expr RBRACKET')
     def target(self, p):
         return ast.ArrayAccess(p.target, [p.expr0, p.expr1], lineno=p.lineno)
 
-    # 3. Slicing with RANGE: x[start..end]
+    # Slicing with RANGE: x[start..end]
     @_('target LBRACKET expr RANGE expr RBRACKET')
     def target(self, p):
         slice_node = ast.Slice(p.expr0, p.expr1, lineno=p.lineno)
@@ -195,7 +271,7 @@ class QuantelParser(Parser):
     # --- Expressions ---
     @_('BOOLEAN')
     def expr(self, p):
-        # Convert the string "true" or "false" to a Python boolean
+        # Convert "true"/"false" to Python boolean
         val = True if p.BOOLEAN == 'true' else False
         return ast.Literal(val, lineno=p.lineno)
 
@@ -241,7 +317,7 @@ class QuantelParser(Parser):
     def expr(self, p):
         return ast.FuncCall(p.ID, p.arg_list, lineno=p.lineno)
 
-    # Array Literals: [1, 2, 3] or [[1,2], [3,4]]
+    # Array Literals: [1, 2, 3]
     @_('LBRACKET arg_list RBRACKET')
     def expr(self, p):
         return ast.ArrayLiteral(p.arg_list, lineno=p.lineno)

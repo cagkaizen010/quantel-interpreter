@@ -147,7 +147,7 @@ class QuantelIDE(ctk.CTk):
                 return
 
             parser = QuantelParser()
-            ast_tree = parser.parse(iter(tokens))
+            ast_tree = parser.parse(iter(tokens), source_text=code)
 
             if parser.errors:
                 for err in parser.errors:
@@ -157,19 +157,21 @@ class QuantelIDE(ctk.CTk):
                 return
 
             # --- PHASE 2.1: SEMANTIC ANALYSIS ---
-            try:
-                from engine.semantic_analyzer import SemanticAnalyzer, SemanticError
-                analyzer = SemanticAnalyzer()
-                analyzer.analyze(ast_tree)
+            from engine.semantic_analyzer import SemanticAnalyzer
+            analyzer = SemanticAnalyzer()
+            analyzer.analyze(ast_tree)
+            semantic_errors = analyzer.errors
+
+            if semantic_errors:
+                for err in semantic_errors:
+                    line_match = re.search(r"\(Line (\d+)\)", err)
+                    if line_match:
+                        line = int(line_match.group(1))
+                        self.editor_panel.mark_error(line)
+                self.output_panel.show_error("Semantic Errors", semantic_errors)
+                return
+            else:
                 self.output_panel.update_symbols_tab(analyzer)
-            except SemanticError as e:
-                line = self._get_line_from_error(e)
-                self.editor_panel.mark_error(line)
-                self.output_panel.show_error("Semantic Error", [str(e)])
-                return
-            except Exception as e:
-                self.output_panel.show_error("Analyzer Crash", [str(e)])
-                return
 
             if ast_tree:
                 # --- OPTIMIZER ---
@@ -248,6 +250,7 @@ class QuantelIDE(ctk.CTk):
 
     def _open_specific_file(self, filepath):
         try:
+            print(f"DEBUG: Opening file: {filepath}") # Added for debugging
             with open(filepath, "r") as f:
                 content = f.read()
             self.editor_panel.set_text(content)
