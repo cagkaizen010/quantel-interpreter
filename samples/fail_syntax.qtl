@@ -6,5 +6,16 @@ scalar int32 wrongOrder = 23;
 
 // Test 3: Invalid Matrix Dimensions
 // Proper grammar: matrix< <num>, <num>>
-int64 matrix<5> onlyOneDimension
+int64 matrix<5> onlyOneDimension;
 
+// Test 4: Invalid function declaration
+func paddy_cake(x) -> float32 scalar{
+    int32 scalar not_returned_var = 12;
+    return not_returned_var;
+}
+probe(paddy_cake);
+
+// Test 5: Invalid Conditional Statement
+if(x = 5){
+    probe(x)
+}

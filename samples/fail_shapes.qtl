@@ -1,35 +1,17 @@
 // [TEST 1] SCALAR TEST
-int32 scalar myScalar = 42;
+int32 scalar my_Scalar = 1,424;
+int32 scalar money = $1000;
 if (myScalar){
     probe ( myScalar );
 }
 
 // [TEST 2] VECTOR TEST
-int64 matrix<3, 3> myMatrix;
-bool tensor<2, 4, 2> myTensor;
+int64 vector<3, 3> myVector;
+bool vector<2, x, 3.5> myVectorWithUndefinedVariable;
 
+// [TEST 3] MATRIX TEST
+// No commas, space seperation
+float32 matrix<5 5 5 5 5> myMatrix = [3]; 
 
-// import stressTest
-
-// Test 1: Integer Limit Stress
-// The grammar allows <num> to be a sequence of digits of any length.
-// This tests if the compiler handles values exceeding standard 32/64-bit limits.
-int32 vector< 9999999999999999999 > 123overflowVector;
-
-// Test 2: Recursion Limit Stress (High-Dimensional Tensor)
-// <dim_list> is defined recursively (<num> <dim_list>). 
-// This tests the parser's stack depth for many dimensions.
-float64 tensor< 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2> hyperCube;
-
-// Test 3: Matrix/Tensor Ambiguity & Edge Case
-// A tensor with 2 dimensions is structurally identical to a matrix in logic,
-// but distinct in syntax. We also test a '0' dimension size.
-bool tensor< 100, 0 > 123zeroWidthTensor;
-
-// Test 4: Matrix Edge Case
-// Testing a matrix with a massive row count but single column.
-int64 matrix< 100000, 1 > tallMatrix;
-
-// Usage to ensure valid program structure
-probe( overflowVector[0] );
-probe(zeroWidthTensor);
+// [TEST 4] TENSOR TEST
+float64 tensor<2 561 3> myTensor;
