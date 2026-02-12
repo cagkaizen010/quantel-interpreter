@@ -1,0 +1,10 @@
+// Test 1: Improper Variable Names
+int32 scalar 123wrongVariable =32;
+
+// Test 2: Invalid Order
+scalar int32 wrongOrder = 23;
+
+// Test 3: Invalid Matrix Dimensions
+// Proper grammar: matrix< <num>, <num>>
+int64 matrix<5> onlyOneDimension
+
