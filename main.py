@@ -48,6 +48,7 @@ def run_cli():
     parser.add_argument("-g", "--gui", action="store_true", help="Launch the Quantel IDE")
     parser.add_argument("-p", "--parse", action="store_true", help="Parse and print AST (JSON)")
     parser.add_argument("-l", "--lex", action="store_true", help="Tokenize and print tokens")
+    parser.add_argument("--lex-out", action="store_true", help="Output lexed tokens to the specified .txt file")
     parser.add_argument("-t", "--tac", action="store_true", help="Show Optimized Three-Address Code")
 
     args = parser.parse_args()
@@ -97,7 +98,20 @@ def run_cli():
     if args.lex:
         for tok in tokens: print(tok)
         return
+    
+    if args.lex_out:
+        # Create directory if it doesn't exist
+        os.makedirs("samples", exist_ok=True)
+        
+        with open("samples/output.txt", "w") as f:
+            for tok in tokens:
+                f.write(f"{tok}\n")
 
+            errors = lexer.get_errors()
+            if errors:
+                for msg in errors:
+                    f.write(f"{msg}\n")
+        return
     # --- 2. PARSING ---
     print(f"--- Processing: {source_name} ---")
     quantel_parser = QuantelParser()
