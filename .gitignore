@@ -1,3 +1,5 @@
 __pycache__/
 venv/
 /docs/
+
+samples/large_file.qtl

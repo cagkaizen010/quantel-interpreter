@@ -210,9 +210,11 @@ class QuantelIDE(ctk.CTk):
         self.config(menu=menubar)
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
+
         file_menu.add_command(label="New", command=self._new_file, accelerator="Cmd+N")
         file_menu.add_command(label="Open...", command=self._open_file, accelerator="Cmd+O")
         file_menu.add_command(label="Save", command=self._save_file, accelerator="Cmd+S")
+
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.quit, accelerator="Cmd+Q")
 
@@ -230,10 +232,16 @@ class QuantelIDE(ctk.CTk):
         view_menu.add_command(label="Toggle White Box", command=self._toggle_tac)
 
     def _bind_shortcuts(self):
-        self.bind_all("<Command-n>", lambda e: self._new_file())
-        self.bind_all("<Command-o>", lambda e: self._open_file())
-        self.bind_all("<Command-s>", lambda e: self._save_file())
-        self.bind_all("<Command-f>", lambda e: self._open_search_bar())
+
+        ## To prevent the hotkeys from popping up during use.
+        # self.bind_all("<Command-n>", lambda e: self._new_file())
+        # self.bind_all("<Command-o>", lambda e: self._open_file())
+        # self.bind_all("<Command-s>", lambda e: self._save_file())
+        
+        # self.bind_all("<Command-f>", lambda e: self._open_search_bar())
+        self.bind_all("<Control-n>", lambda e: self._new_file())
+        self.bind_all("<Control-o>", lambda e: self._open_file())
+        self.bind_all("<Control-s>", lambda e: self._save_file())
         self.bind_all("<Control-f>", lambda e: self._open_search_bar())
         self.bind_all("<F5>", lambda e: self.run_quantel_code())
 

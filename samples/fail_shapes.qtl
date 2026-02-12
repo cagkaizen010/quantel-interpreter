@@ -1,0 +1,17 @@
+// [TEST 1] SCALAR TEST
+int32 scalar my_Scalar = 1,424;
+int32 scalar money = $1000;
+if (myScalar){
+    probe ( myScalar );
+}
+
+// [TEST 2] VECTOR TEST
+int64 vector<3, 3> myVector;
+bool vector<2, x, 3.5> myVectorWithUndefinedVariable;
+
+// [TEST 3] MATRIX TEST
+// No commas, space seperation
+float32 matrix<5 5 5 5 5> myMatrix = [3]; 
+
+// [TEST 4] TENSOR TEST
+float64 tensor<2 561 3> myTensor;
