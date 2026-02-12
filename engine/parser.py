@@ -43,9 +43,9 @@ class QuantelParser(Parser):
     def import_list(self, p):
         return []
 
-    @_('IMPORT NAME SEMICOLON')
+    @_('IMPORT ID SEMICOLON')
     def import_stmt(self, p):
-        return ast.Import(p.NAME, lineno=p.lineno)
+        return ast.Import(p.ID, lineno=p.lineno)
 
     # --- Statements ---
     @_('statements statement')
@@ -65,39 +65,39 @@ class QuantelParser(Parser):
     # --- Declarations ---
 
     # 1. Standard: float32 scalar x = 1.0;
-    @_('dtype shape_type NAME ASSIGN expr SEMICOLON')
+    @_('dtype shape_type ID ASSIGN expr SEMICOLON')
     def declaration(self, p):
-        return ast.VarDecl(p.dtype, p.shape_type, p.NAME, p.expr, lineno=p.lineno)
+        return ast.VarDecl(p.dtype, p.shape_type, p.ID, p.expr, lineno=p.lineno)
 
     # 2. Standard (No Init): float32 scalar x;
-    @_('dtype shape_type NAME SEMICOLON')
+    @_('dtype shape_type ID SEMICOLON')
     def declaration(self, p):
-        return ast.VarDecl(p.dtype, p.shape_type, p.NAME, None, lineno=p.lineno)
+        return ast.VarDecl(p.dtype, p.shape_type, p.ID, None, lineno=p.lineno)
 
     # 3. Auto Inference: auto x = [1, 2, 3];
-    @_('AUTO NAME ASSIGN expr SEMICOLON')
+    @_('AUTO ID ASSIGN expr SEMICOLON')
     def declaration(self, p):
         # We pass 'auto' as dtype and None as shape_type to indicate inference is needed
-        return ast.VarDecl('auto', None, p.NAME, p.expr, lineno=p.lineno)
+        return ast.VarDecl('auto', None, p.ID, p.expr, lineno=p.lineno)
 
     # 4. Custom Type: Layer my_layer;
-    @_('NAME NAME SEMICOLON')
+    @_('ID ID SEMICOLON')
     def declaration(self, p):
-        return ast.VarDecl(p.NAME0, None, p.NAME1, None, lineno=p.lineno)
+        return ast.VarDecl(p.ID0, None, p.ID1, None, lineno=p.lineno)
 
     # 5. Pointer: float32 scalar *x = &y;
-    @_('dtype shape_type TIMES NAME ASSIGN AMPERSAND NAME SEMICOLON')
+    @_('dtype shape_type TIMES ID ASSIGN AMPERSAND ID SEMICOLON')
     def declaration(self, p):
-        return ast.PointerDecl(p.dtype, p.shape_type, p.NAME0, p.NAME1, lineno=p.lineno)
+        return ast.PointerDecl(p.dtype, p.shape_type, p.ID0, p.ID1, lineno=p.lineno)
 
     # --- Functions ---
-    @_('FUNC NAME LPAREN param_list RPAREN ARROW dtype shape_type block')
+    @_('FUNC ID LPAREN param_list RPAREN ARROW dtype shape_type block')
     def func_decl(self, p):
-        return ast.FuncDecl(p.NAME, p.param_list, p.dtype, p.shape_type, p.block, lineno=p.lineno)
+        return ast.FuncDecl(p.ID, p.param_list, p.dtype, p.shape_type, p.block, lineno=p.lineno)
 
-    @_('FUNC NAME LPAREN param_list RPAREN ARROW NAME block')
+    @_('FUNC ID LPAREN param_list RPAREN ARROW ID block')
     def func_decl(self, p):
-        return ast.FuncDecl(p.NAME0, p.param_list, p.NAME1, None, p.block, lineno=p.lineno)
+        return ast.FuncDecl(p.ID0, p.param_list, p.ID1, None, p.block, lineno=p.lineno)
 
     @_('param_list COMMA param')
     def param_list(self, p):
@@ -111,13 +111,13 @@ class QuantelParser(Parser):
     def param_list(self, p):
         return []
 
-    @_('dtype shape_type NAME')
+    @_('dtype shape_type ID')
     def param(self, p):
-        return ast.FuncParam(p.dtype, p.shape_type, p.NAME, lineno=p.lineno)
+        return ast.FuncParam(p.dtype, p.shape_type, p.ID, lineno=p.lineno)
 
-    @_('NAME NAME')
+    @_('ID ID')
     def param(self, p):
-        return ast.FuncParam(p.NAME0, None, p.NAME1, lineno=p.lineno)
+        return ast.FuncParam(p.ID0, None, p.ID1, lineno=p.lineno)
 
     # --- Control Flow ---
     @_('LBRACE statements RBRACE')
@@ -144,9 +144,9 @@ class QuantelParser(Parser):
     def control_flow(self, p):
         return ast.RepeatUntilStmt(p.block, p.expr, lineno=p.lineno)
 
-    @_('FOR NAME IN range block')
+    @_('FOR ID IN range block')
     def control_flow(self, p):
-        return ast.ForStmt(p.NAME, p.range, p.block, lineno=p.lineno)
+        return ast.ForStmt(p.ID, p.range, p.block, lineno=p.lineno)
 
     @_('NUMBER RANGE NUMBER')
     def range(self, p):
@@ -167,9 +167,9 @@ class QuantelParser(Parser):
         return ast.Assignment(p.target, p[1], p.expr, lineno=p.lineno)
 
     # --- Targets & Slicing ---
-    @_('NAME')
+    @_('ID')
     def target(self, p):
-        return ast.Identifier(p.NAME, lineno=p.lineno)
+        return ast.Identifier(p.ID, lineno=p.lineno)
 
     # Array Access: x[i]
     # 1. Standard Array Access: x[i]
@@ -188,9 +188,9 @@ class QuantelParser(Parser):
         slice_node = ast.Slice(p.expr0, p.expr1, lineno=p.lineno)
         return ast.ArrayAccess(p.target, slice_node, lineno=p.lineno)
 
-    @_('target DOT NAME')
+    @_('target DOT ID')
     def target(self, p):
-        return ast.RecordAccess(p.target, p.NAME, lineno=p.lineno)
+        return ast.RecordAccess(p.target, p.ID, lineno=p.lineno)
 
     # --- Expressions ---
     @_('BOOLEAN')
@@ -237,9 +237,9 @@ class QuantelParser(Parser):
     def expr(self, p):
         return p.target
 
-    @_('NAME LPAREN arg_list RPAREN')
+    @_('ID LPAREN arg_list RPAREN')
     def expr(self, p):
-        return ast.FuncCall(p.NAME, p.arg_list, lineno=p.lineno)
+        return ast.FuncCall(p.ID, p.arg_list, lineno=p.lineno)
 
     # Array Literals: [1, 2, 3] or [[1,2], [3,4]]
     @_('LBRACKET arg_list RBRACKET')
@@ -300,9 +300,9 @@ class QuantelParser(Parser):
     def continue_stmt(self, p):
         return ast.Continue(lineno=p.lineno)
 
-    @_('RECORD NAME LBRACE decl_list RBRACE')
+    @_('RECORD ID LBRACE decl_list RBRACE')
     def record_decl(self, p):
-        return ast.RecordDecl(p.NAME, p.decl_list, lineno=p.lineno)
+        return ast.RecordDecl(p.ID, p.decl_list, lineno=p.lineno)
 
     @_('decl_list declaration')
     def decl_list(self, p):

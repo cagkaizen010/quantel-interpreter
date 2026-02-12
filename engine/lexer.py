@@ -2,7 +2,7 @@ from sly import Lexer
 
 class QuantelLexer(Lexer):
     tokens = {
-        NAME, NUMBER, STRING,
+        ID, NUMBER, STRING,
         IMPORT, FUNC, RETURN, IF, ELSE, FOR, IN, WHILE, REPEAT, UNTIL,
         BREAK, CONTINUE, PROBE, RECORD,
         SCALAR, VECTOR, MATRIX, TENSOR, AUTO,
@@ -116,8 +116,8 @@ class QuantelLexer(Lexer):
     }
 
     @_(r'[a-zA-Z_][a-zA-Z0-9_]*')
-    def NAME(self, t):
-        t.type = self.keywords.get(t.value, 'NAME')
+    def ID(self, t):
+        t.type = self.keywords.get(t.value, 'ID')
         return t
 
     @_(r'\".*?\"')
