@@ -73,3 +73,7 @@ https://github.com/user-attachments/assets/8ccc323e-1a9d-4149-b090-ed1908714f46
 
 <img width="781" height="463" alt="image" src="https://github.com/user-attachments/assets/a3bc5e21-f474-4efc-a5bc-33dff45c4878" />
 
+**Error Handling:**
+
+<img width="748" height="710" alt="image" src="https://github.com/user-attachments/assets/65fcda53-bb4b-474e-8494-2c9ab525d663" />
+<img width="625" height="961" alt="image" src="https://github.com/user-attachments/assets/d111e20c-e9c7-40ab-b97c-6ee7fd3be21e" />
