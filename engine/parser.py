@@ -376,9 +376,9 @@ class QuantelParser(Parser):
     def expr_stmt(self, p):
         return ast.ExprStmt(p.expr, lineno=p.lineno)
 
-    @_('DTYPE')
+    @_('DTYPE', 'ID')
     def dtype(self, p):
-        return p.DTYPE
+        return p[0]
 
     @_('')
     def empty(self, p):

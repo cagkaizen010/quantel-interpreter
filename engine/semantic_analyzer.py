@@ -3,10 +3,9 @@ class Symbol:
         self.name = name
         self.symbol_type = symbol_type
         self.category = category  # 'variable', 'function', 'record'
-        self.shape = shape # None means unknown, [] means scalar, [n] means vector, [n,m] means matrix
+        self.shape = shape # None=unknown, []=scalar, [n]=vector, [n,m]=matrix
         self.is_initialized = is_initialized
         self.params_count = params_count
-
 
 class SemanticAnalyzer:
     def __init__(self):
@@ -35,12 +34,13 @@ class SemanticAnalyzer:
 
         symbol = Symbol(name, symbol_type, category, shape, initialized, params_count)
         self.scopes[-1][name] = symbol
-        # Always update history for the UI, using a unique key if local
+        # Update history using a unique key for local symbols to prevent overwriting globals in UI
         history_key = name if len(self.scopes) == 1 else f"{name} (local)"
         self.history[history_key] = symbol
         return symbol
 
     def lookup(self, name):
+        # Traverse from innermost scope to global scope
         for scope in reversed(self.scopes):
             if name in scope: return scope[name]
         return None
@@ -72,8 +72,25 @@ class SemanticAnalyzer:
     # ==========================================
 
     def visit_RecordDecl(self, node):
-        # ERROR 1: Duplicate Record
-        self.define(node, node.name, 'record', 'record', initialized=True)
+        # ERROR 1: Duplicate Record / Field Mapping
+        field_map = {decl.name: decl.dtype for decl in node.fields}
+        self.define(node, node.name, 'record', 'record', initialized=True, params_count=field_map)
+        self.visit(node.fields)
+
+    def visit_RecordAccess(self, node):
+        # [NEW LOGIC] Catch ERROR 10 & 11
+        self.visit(node.record)
+        target_type = self.get_type(node.record)
+        # Search history for the record definition to get its field map
+        record_def = self.history.get(target_type)
+
+        if not record_def or record_def.category != 'record':
+            self._report_error(node, "Invalid access", f"Type '{target_type}' is not a record.")
+            return
+
+        if node.field not in record_def.params_count:
+            self._report_error(node, f"Field '{node.field}' not in '{target_type}'",
+                               f"Available: {', '.join(record_def.params_count.keys())}")
 
     def visit_PointerDecl(self, node):
         # ERROR 4: Pointer to Undefined
@@ -113,7 +130,6 @@ class SemanticAnalyzer:
             # ERROR 2: Calling a non-function
             if symbol.category != 'function':
                 self._report_error(node, f"'{node.name}' is not a function", f"It is a {symbol.category}.")
-
             # ERROR 8: Missing Arguments
             args_given = len(node.args) if node.args else 0
             if args_given != symbol.params_count:
@@ -121,15 +137,14 @@ class SemanticAnalyzer:
         self.visit(node.args)
 
     def visit_UnaryOp(self, node):
-        # Pointer check is now handled in visit_PointerDecl for declarations, 
-        # but for general expressions it might still be needed if '&' is used elsewhere.
-        if node.op == '&':
-            if hasattr(node.operand, 'name'):
-                if not self.lookup(node.operand.name):
-                    self._report_error(node, "Undefined pointer target", f"'{node.operand.name}' was never declared.")
+        # Catch '&' pointer target errors
+        if node.op == '&' and hasattr(node.operand, 'name'):
+            if not self.lookup(node.operand.name):
+                self._report_error(node, "Undefined pointer target", f"'{node.operand.name}' was never declared.")
         self.visit(node.operand)
 
     def visit_Identifier(self, node):
+        # ERROR 5: Scope Leakage / Undefined ID
         if not self.lookup(node.name):
             self._report_error(node, f"Undefined identifier '{node.name}'", "Variable is out of scope.")
 
@@ -138,10 +153,9 @@ class SemanticAnalyzer:
         target = node.name
         if hasattr(target, 'name'):
             s = self.lookup(target.name)
-            # Only error if we are SURE it is a scalar (shape is [])
             if s and s.shape == []:
                 self._report_error(node, "Invalid indexing", f"'{s.name}' is a scalar and cannot be indexed.")
-        self.visit(target)
+        self.visit(node.name)
         self.visit(node.index)
 
     def visit_Assignment(self, node):
@@ -154,8 +168,7 @@ class SemanticAnalyzer:
 
     def visit_IfStmt(self, node):
         self.visit(node.condition)
-        # ERROR 5: Scope Leakage Protection
-        self.enter_scope()
+        self.enter_scope() # Essential for Scope Leakage Protection
         self.visit(node.then_block)
         self.exit_scope()
         if node.else_block:
@@ -163,27 +176,13 @@ class SemanticAnalyzer:
             self.visit(node.else_block)
             self.exit_scope()
 
-    def visit_WhileStmt(self, node):
-        self.visit(node.condition)
-        self.enter_scope()
-        self.visit(node.body)
-        self.exit_scope()
-
-    def visit_RepeatUntilStmt(self, node):
-        self.enter_scope()
-        self.visit(node.body)
-        self.exit_scope()
-        self.visit(node.condition)
-
     def visit_ForStmt(self, node):
         self.visit(node.range)
         self.enter_scope()
+        # Define loop variable locally
         self.define(node, node.loop_var, 'int32', 'variable', shape=[], initialized=True)
         self.visit(node.body)
         self.exit_scope()
-
-    def visit_Probe(self, node):
-        self.visit(node.target)
 
     def visit_Return(self, node):
         # ERROR 6: Return Mismatch
@@ -193,54 +192,49 @@ class SemanticAnalyzer:
         if actual != expected:
             self._report_error(node, "Return mismatch", f"Expected {expected}, got {actual}.")
 
-    def visit_ExprStmt(self, node):
-        self.visit(node.expr)
-
     # ==========================================
     #           TYPE INFERENCE SYSTEM
     # ==========================================
     def get_type(self, node):
         if node is None: return "unknown"
         if isinstance(node, (int, float, str, bool)):
-            return "int32" if isinstance(node, int) else "float32" if isinstance(node,
-                                                                                 float) else "string" if isinstance(
-                node, str) else "bool"
+            if isinstance(node, bool): return "bool"
+            if isinstance(node, int): return "int32"
+            if isinstance(node, float): return "float32"
+            return "string"
 
         cls = node.__class__.__name__
         if cls == 'Literal': return self.get_type(node.value)
-        if cls == 'ArrayLiteral': return "matrix"  # Simplification for ERROR 7
+        if cls == 'ArrayLiteral': return "matrix"
         if cls == 'Identifier':
             s = self.lookup(node.name)
-            if not s:
-                return "unknown"
-            return s.symbol_type
+            return s.symbol_type if s else "unknown"
+        if cls == 'ArrayAccess':
+            return self.get_type(node.name)
+        if cls == 'RecordAccess':
+            # NEW: Recursive type resolution for record fields
+            target_type = self.get_type(node.record)
+            record_def = self.history.get(target_type)
+            if record_def and record_def.category == 'record':
+                return record_def.params_count.get(node.field, "unknown")
+            return "unknown"
         if cls == 'BinOp':
+            # ERROR 3: Type Mismatch in expressions
             lt, rt = self.get_type(node.left), self.get_type(node.right)
-            # ERROR 3: Invalid Matrix Math
             if lt != rt and "unknown" not in [lt, rt]:
                 self._report_error(node, "Incompatible types", f"Cannot operate on {lt} and {rt}.")
             return lt
-        if cls == 'ArrayAccess':
-            return self.get_type(node.name) # Simplified
         return "unknown"
 
     def get_shape(self, node):
         if node is None: return None
         if isinstance(node, (int, float, str, bool)): return []
-
         cls = node.__class__.__name__
         if cls == 'Literal': return []
         if cls == 'ArrayLiteral': return [len(node.elements)]
         if cls == 'Identifier':
             s = self.lookup(node.name)
             return s.shape if s else None
-        if cls == 'BinOp':
-            ls = self.get_shape(node.left)
-            rs = self.get_shape(node.right)
-            if ls is not None: return ls
-            if rs is not None: return rs
-            return None
         if cls == 'ArrayAccess':
-            # Slicing or indexing might change shape, but for now just pass through
             return self.get_shape(node.name)
         return None
