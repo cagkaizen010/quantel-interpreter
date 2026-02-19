@@ -86,6 +86,23 @@ class QuantelParser(Parser):
         if self.prev_token and self.prev_token.type in op_types:
             return f"Expected an expression (number, variable, or '(') after '{self.prev_token.value}'."
 
+        # Case 5: Operator Typos
+        line_idx = p.lineno - 1
+        line = self.source_lines[line_idx] if 0 <= line_idx < len(self.source_lines) else ""
+
+        if p.type == 'ASSIGN':
+            if 'if' in line or 'while' in line:
+                return "Assignment '=' used in condition. Did you mean '=='?"
+            if '=>' in line:
+                return "Unexpected '=>'. Did you mean '->' for function return type?"
+
+        if p.type == 'AMPERSAND':
+            if '&' in line and '&&' not in line:
+                return "Single '&' detected. Did you mean '&&' for logical AND?"
+
+        if p.type == 'GT' and '=>' in line:
+            return "Unexpected '=>'. Did you mean '->' for function return type?"
+
         return "Verify syntax: check for mismatched brackets, missing semicolons, or invalid types."
 
     # ==========================================

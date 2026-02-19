@@ -3,7 +3,7 @@ class Symbol:
         self.name = name
         self.symbol_type = symbol_type
         self.category = category  # 'variable', 'function', 'record'
-        self.shape = shape if shape is not None else []
+        self.shape = shape # None means unknown, [] means scalar, [n] means vector, [n,m] means matrix
         self.is_initialized = is_initialized
         self.params_count = params_count
 
@@ -82,11 +82,12 @@ class SemanticAnalyzer:
         self.define(node, node.name, node.dtype, 'variable', initialized=True)
 
     def visit_VarDecl(self, node):
-        v_shape = getattr(node.shape, 'dims', []) if node.shape else []
+        v_shape = getattr(node.shape, 'dims', []) if node.shape else None
         v_type = node.dtype
 
         if v_type == 'auto' and node.value:
             v_type = self.get_type(node.value)
+            v_shape = self.get_shape(node.value)
 
         self.define(node, node.name, v_type, 'variable', v_shape, node.value is not None)
         self.visit(node.value)
@@ -137,7 +138,8 @@ class SemanticAnalyzer:
         target = node.name
         if hasattr(target, 'name'):
             s = self.lookup(target.name)
-            if s and not s.shape:
+            # Only error if we are SURE it is a scalar (shape is [])
+            if s and s.shape == []:
                 self._report_error(node, "Invalid indexing", f"'{s.name}' is a scalar and cannot be indexed.")
         self.visit(target)
         self.visit(node.index)
@@ -160,6 +162,25 @@ class SemanticAnalyzer:
             self.enter_scope()
             self.visit(node.else_block)
             self.exit_scope()
+
+    def visit_WhileStmt(self, node):
+        self.visit(node.condition)
+        self.enter_scope()
+        self.visit(node.body)
+        self.exit_scope()
+
+    def visit_RepeatUntilStmt(self, node):
+        self.enter_scope()
+        self.visit(node.body)
+        self.exit_scope()
+        self.visit(node.condition)
+
+    def visit_ForStmt(self, node):
+        self.visit(node.range)
+        self.enter_scope()
+        self.define(node, node.loop_var, 'int32', 'variable', shape=[], initialized=True)
+        self.visit(node.body)
+        self.exit_scope()
 
     def visit_Probe(self, node):
         self.visit(node.target)
@@ -202,3 +223,24 @@ class SemanticAnalyzer:
         if cls == 'ArrayAccess':
             return self.get_type(node.name) # Simplified
         return "unknown"
+
+    def get_shape(self, node):
+        if node is None: return None
+        if isinstance(node, (int, float, str, bool)): return []
+
+        cls = node.__class__.__name__
+        if cls == 'Literal': return []
+        if cls == 'ArrayLiteral': return [len(node.elements)]
+        if cls == 'Identifier':
+            s = self.lookup(node.name)
+            return s.shape if s else None
+        if cls == 'BinOp':
+            ls = self.get_shape(node.left)
+            rs = self.get_shape(node.right)
+            if ls is not None: return ls
+            if rs is not None: return rs
+            return None
+        if cls == 'ArrayAccess':
+            # Slicing or indexing might change shape, but for now just pass through
+            return self.get_shape(node.name)
+        return None
