@@ -9,7 +9,7 @@ from engine.parser import QuantelParser
 import engine.ast as ast
 
 # NEW: Import the new modules you've built
-from engine.semantic_analyzer import SemanticAnalyzer, SemanticError
+from engine.semantic_analyzer import SemanticAnalyzer
 from engine.optimizer import QuantelOptimizer
 from engine.tac_generator import TACGenerator
 from engine.interpreter import QuantelInterpreter
@@ -126,10 +126,11 @@ def run_cli():
     # We do this before optimization to ensure the original code is valid
     print("\n--- Semantic Analysis ---")
     analyzer = SemanticAnalyzer()
-    try:
-        analyzer.analyze(tree) # This prints your Symbol Table
-    except SemanticError as e:
-        print(f"❌ SEMANTIC ERROR: {e}")
+    semantic_errors = analyzer.analyze(tree)
+
+    if semantic_errors:
+        print("\n!!! Semantic Errors Found !!!")
+        for err in semantic_errors: print(f" - {err}")
         return
 
     # --- 4. OPTIMIZATION ---

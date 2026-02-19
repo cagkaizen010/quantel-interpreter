@@ -1,5 +1,3 @@
-class SemanticError(Exception): pass
-
 class Symbol:
     def __init__(self, name, symbol_type, category):
         self.name = name
@@ -12,6 +10,7 @@ class SemanticAnalyzer:
     def __init__(self):
         self.scopes = [{}]
         self.history = {}
+        self.errors = []
 
     def enter_scope(self):
         self.scopes.append({})
@@ -29,8 +28,12 @@ class SemanticAnalyzer:
             if name in scope: return scope[name]
         return None
 
+    def _error(self, message, lineno=0):
+        self.errors.append(f"Semantic Error (Line {lineno}): {message}")
+
     def analyze(self, node):
         self.visit(node)
+        return self.errors
 
     def visit(self, node):
         if node is None: return
@@ -86,14 +89,20 @@ class SemanticAnalyzer:
         if cls == 'Literal': return self.get_type(node.value)
         if cls == 'Identifier':
             s = self.lookup(node.name)
-            return s.symbol_type if s else "unknown"
+            if not s:
+                self._error(f"Undefined identifier '{node.name}'.", node.lineno)
+                return "unknown" # Return a default type to allow analysis to continue
+            return s.symbol_type
         if cls == 'BinOp':
             if node.op in ['&&', '||', 'AND', 'OR']: return "bool"
             return self.get_type(node.left)
         if cls == 'CompareOp': return "bool"
         if cls == 'FuncCall':
             s = self.lookup(node.name)
-            return s.symbol_type if s else "void"
+            if not s:
+                self._error(f"Undefined function '{node.name}'.", node.lineno)
+                return "void" # Return a default type to allow analysis to continue
+            return s.symbol_type
         if cls in ['ArrayLiteral', 'ArrayAccess']: return "float32"
         if cls == 'UnaryOp':
             if node.op == '&': return self.get_type(node.operand) + "*"
