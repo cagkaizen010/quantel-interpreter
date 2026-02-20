@@ -6,7 +6,7 @@
 import math;
 
 // [TEST 2] Record Definitions
-// Rules: RECORD NAME LBRACE decl_list RBRACE
+// Rules: RECORD ID LBRACE decl_list RBRACE
 record NeuralConfig {
     float32 scalar learning_rate;
     int32 scalar max_epochs;
@@ -14,7 +14,7 @@ record NeuralConfig {
 }
 
 // [TEST 3] Function Declaration
-// Rules: FUNC NAME ... ARROW dtype shape_type block
+// Rules: FUNC ID ... ARROW dtype shape_type block
 func relu_activation(float32 scalar val) -> float32 scalar {
     if (val > 0.0 && val < 100.0) {
         return val;
@@ -24,7 +24,7 @@ func relu_activation(float32 scalar val) -> float32 scalar {
 }
 
 // [TEST 4] Global Variables
-// Rules: dtype shape_type NAME ASSIGN expr SEMICOLON
+// Rules: dtype shape_type ID ASSIGN expr SEMICOLON
 int32 scalar epoch_counter = 0;
 float32 scalar bias_correction = 0.01;
 
@@ -68,7 +68,7 @@ while (safe_mode != 0) {
 }
 
 // [TEST 10] Pointers
-// Rule: dtype shape_type TIMES NAME ASSIGN AMPERSAND NAME SEMICOLON
+// Rule: dtype shape_type TIMES ID ASSIGN AMPERSAND ID SEMICOLON
 float32 scalar *ptr = &total_activation;
 probe(ptr);
 

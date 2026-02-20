@@ -1,0 +1,100 @@
+
+// ========================================================================
+//  QUANTEL CHAOS TEST: SEMANTIC ERROR VALIDATION
+// ========================================================================
+
+import math;
+
+// [ERROR 1] Duplicate Record Definition
+record Config { float32 scalar lr; }
+record Config { int32 scalar epochs; } // Should trigger: Redeclaration of 'Config'
+
+func compute(float32 scalar x) -> float32 scalar {
+    return x * 2.0;
+}
+
+// [ERROR 2] Calling a non-function
+int32 scalar not_a_func = 10;
+auto result = not_a_func(5.0); // Should trigger: 'not_a_func' is not a function
+
+// [TEST 5] Linear Algebra Context
+float32 matrix<3,3> Weights = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+
+// [ERROR 3] Invalid Matrix Math
+// You cannot add a string literal to a high-precision matrix
+auto broken_math = Weights + "Invalid Offset";
+
+// [ERROR 4] Pointer to Undefined
+// 'ghost' has never been declared
+float32 scalar *p = &ghost;
+
+// [ERROR 5] Scope Leakage
+if (true) {
+    float32 scalar local_var = 99.0;
+}
+probe(local_var); // Should trigger: Undefined identifier 'local_var' (Scope was popped)
+
+// [ERROR 6] Function Return Mismatch
+func get_count() -> int32 scalar {
+    return "Ten"; // Should trigger: Expected int32, got string
+}
+
+// [ERROR 7] Assignment Type Mismatch
+int32 scalar counter = 0;
+counter = [[1.0, 2.0]]; // Should trigger: Cannot assign matrix to int32
+
+// [ERROR 8] Missing Arguments
+auto val = compute(); // Should trigger: Function 'compute' expects 1 argument, got 0
+
+// [ERROR 9] Indexing a non-array
+float32 scalar single_value = 5.0;
+auto trap = single_value[0]; // Should trigger: Cannot index into a scalar type
+
+
+// [TEST 12] Record Setup
+record NeuralConfig {
+    float32 scalar learning_rate;
+}
+
+// Ensure the parser recognizes NeuralConfig as a type
+NeuralConfig scalar my_config;
+
+// [ERROR 10] Accessing Field on a Non-Record
+int32 scalar dummy = 5;
+auto fail_1 = dummy.learning_rate; // Should trigger: 'dummy' is not a record
+
+// [ERROR 11] Undefined Field Access
+auto fail_2 = my_config.momentum;  // Should trigger: Field 'momentum' not in 'NeuralConfig'
+
+// [ERROR 12] Inner Dimension Mismatch (Matmul)
+// Weights is matrix<3,3>. Multiplying by a vector<5> is mathematically impossible.
+float32 vector<5> wrong_vec = [1.0, 2.0, 3.0, 4.0, 5.0];
+auto bad_matmul = Weights @ wrong_vec; // Should trigger: Inner Dimension Mismatch (3 != 5)
+
+// [ERROR 13] Element-wise Shape Mismatch
+// You cannot add a 3x3 matrix to a 2x2 matrix.
+float32 matrix<2,2> small_mat = [[1.0, 1.0], [1.0, 1.0]];
+auto bad_add = Weights + small_mat; // Should trigger: Arithmetic Shape Mismatch ([3,3] vs [2,2])
+
+// [ERROR 14] Strict Shape Assignment
+// Even if types match (float32), the dimensions must match the declaration.
+float32 vector<3> correct_vec = [1.0, 1.0, 1.0];
+float32 vector<2> tiny_vec = [0.0, 0.0];
+correct_vec = tiny_vec; // Should trigger: Dimension mismatch (Target expects [3], got [2])
+
+// [ERROR 15] Recursive Matrix Construction Error
+// If you attempt to define a matrix with inconsistent row lengths.
+// (Note: This tests your recursive get_shape logic)
+auto wobbly_matrix = [[1.0, 2.0], [3.0]];
+// If the analyzer looks at row 1, it expects shape [2, 2], but finds row 2 is shape [1].
+
+// [ERROR 16] Pointer Type Mismatch
+// Pointer is float32, but target is int32.
+int32 scalar raw_data = 100;
+float32 scalar *ptr_fail = &raw_data; // Should trigger: Type Mismatch (float32 vs int32)
+
+// [ERROR 17] Invalid Scalar Matmul
+// The '@' operator is reserved for linear algebra, not standard scalar multiplication.
+float32 scalar a = 5.0;
+float32 scalar b = 2.0;
+auto illegal_at = a @ b; // Should trigger: Cannot multiply scalars with '@'

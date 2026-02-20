@@ -7,7 +7,6 @@ import engine.ast as ast
 class QuantelParser(Parser):
     tokens = QuantelLexer.tokens
 
-    # --- Precedence Rules ---
     precedence = (
         ('right', 'ASSIGN', 'PLUS_ASSIGN', 'MINUS_ASSIGN', 'TIMES_ASSIGN', 'DIVIDE_ASSIGN', 'AT_ASSIGN'),
         ('left', 'OR'),
@@ -24,84 +23,92 @@ class QuantelParser(Parser):
     def __init__(self):
         self.errors = []
         self.source_lines = []
+        self.prev_token = None  # Track the last successful token
 
     def parse(self, tokens, source_text=None):
-        """
-        Parses tokens into an AST.
-        source_text: The raw code string (REQUIRED for error context).
-        """
         if source_text:
-            # Splitlines handles \n, \r\n, and \r automatically
             self.source_lines = source_text.splitlines()
 
-        return super().parse(tokens)
+        # We wrap the token stream to track the previous token for context
+        return super().parse(self._token_tracker(tokens))
+
+    def _token_tracker(self, tokens):
+        for tok in tokens:
+            yield tok
+            self.prev_token = tok
 
     # ==========================================
-    #       SMART ERROR REPORTING SYSTEM
+    #       PRO-MODE ERROR REPORTING
     # ==========================================
     def error(self, p):
         if not p:
-            self.errors.append("Syntax Error: Unexpected End of File (Did you forget a '}' or ';'? )")
+            msg = "Syntax Error: Unexpected End of File. (Check for unclosed braces '{')"
+            self.errors.append(msg)
+            print(msg)
             return
 
-        # 1. Get Line Content
-        # p.lineno is 1-based, list index is 0-based
-        line_idx = p.lineno - 1
+        # 1. Determine "Expected" context based on grammar state
+        # SLY doesn't expose a simple list of strings for expected tokens easily,
+        # but we can infer them from the current token type and the previous token.
+        hint = self._get_pro_hint(p)
 
-        current_line = "<Source not available>"
-        if 0 <= line_idx < len(self.source_lines):
-            current_line = self.source_lines[line_idx].strip()
-
-        # 2. Analyze Context for Hints
-        suggestion = self._analyze_context(p, current_line)
-
-        # 3. Format Error Message
         error_msg = (
             f"\n[!] SYNTAX ERROR | Line {p.lineno}\n"
-            f"    Context: {current_line}\n"
-            f"    Token:   '{p.value}' ({p.type})\n"
-            f"    Hint:    {suggestion}"
+            f"    Found:    '{p.value}' ({p.type})\n"
+            f"    Previous: '{self.prev_token.value if self.prev_token else 'START'}'\n"
+            f"    Hint:     {hint}"
         )
 
         self.errors.append(error_msg)
         print(error_msg)
-
-        # 4. Trigger Panic Mode Recovery
-        # This tells sly to discard tokens until it finds a synchronization point
         self.restart()
 
-    def _analyze_context(self, p, line):
-        """
-        analyzes the crash site to provide a human-readable hint.
-        """
-        # A. Check for Keyword Typos (e.g. reco5rd -> record)
-        keywords = ['func', 'import', 'return', 'if', 'else', 'while', 'for', 'record', 'scalar', 'vector', 'matrix']
+    def _get_pro_hint(self, p):
 
-        # If the token is an identifier, see if it looks like a keyword
+        # Case 1: Consecutive Operators (Double +, etc.)
+        op_types = {'PLUS', 'MINUS', 'TIMES', 'DIVIDE', 'MOD', 'MATMUL', 'ASSIGN', 'EQ'}
+        if p.type in op_types and self.prev_token and self.prev_token.type in op_types:
+            return f"Consecutive operators detected. '{self.prev_token.value}' cannot be followed by '{p.value}'."
+
+        # Case 2: Missing Semicolon before a structural change
+        if p.type in ('RBRACE', 'FUNC', 'IF', 'WHILE', 'RETURN') and self.prev_token:
+            if self.prev_token.type not in ('SEMICOLON', 'RBRACE', 'LBRACE'):
+                return f"Missing semicolon ';' after '{self.prev_token.value}'."
+
+        # Case 3: Keyword Typo Analysis
+        keywords = ['func', 'import', 'return', 'if', 'else', 'while', 'for', 'record', 'scalar', 'vector', 'matrix']
         if p.type == 'ID':
             matches = difflib.get_close_matches(p.value, keywords, n=1, cutoff=0.7)
             if matches:
-                return f"Did you mean '{matches[0]}'? Typo detected."
+                return f"Unrecognized identifier. Did you mean the keyword '{matches[0]}'?"
 
-        # B. Check for common structural errors
-        if p.type == 'LBRACE':
-            if 'record' in line or 'struct' in line:
-                return "Invalid Record syntax. Expected: 'record Name { ... }'"
-            return "Unexpected '{'. Missing a semicolon on previous line?"
+        # Case 4: Expression/Value expectations
+        if self.prev_token and self.prev_token.type in op_types:
+            return f"Expected an expression (number, variable, or '(') after '{self.prev_token.value}'."
 
-        if p.type == 'LPAREN':
-            if 'func' in line or 'function' in line:
-                return "Invalid Function syntax. Expected: 'func Name(...) -> type { ... }'"
+        # Case 5: Operator Typos
+        line_idx = p.lineno - 1
+        line = self.source_lines[line_idx] if 0 <= line_idx < len(self.source_lines) else ""
+
+        if p.type == 'ASSIGN':
             if 'if' in line or 'while' in line:
-                return "Check your condition syntax."
+                return "Assignment '=' used in condition. Did you mean '=='?"
+            if '=>' in line:
+                return "Unexpected '=>'. Did you mean '->' for function return type?"
 
-        return "Check for missing semicolons, unbalanced parentheses, or invalid types."
+        if p.type == 'AMPERSAND':
+            if '&' in line and '&&' not in line:
+                return "Single '&' detected. Did you mean '&&' for logical AND?"
+
+        if p.type == 'GT' and '=>' in line:
+            return "Unexpected '=>'. Did you mean '->' for function return type?"
+
+        return "Verify syntax: check for mismatched brackets, missing semicolons, or invalid types."
 
     # ==========================================
     #             GRAMMAR RULES
     # ==========================================
 
-    # --- Program ---
     @_('import_list statements')
     def program(self, p):
         return ast.Program(p.import_list, p.statements)
@@ -118,7 +125,6 @@ class QuantelParser(Parser):
     def import_stmt(self, p):
         return ast.Import(p.ID, lineno=p.lineno)
 
-    # --- Statements ---
     @_('statements statement')
     def statements(self, p):
         return p.statements + [p.statement]
@@ -127,47 +133,36 @@ class QuantelParser(Parser):
     def statements(self, p):
         return [p.statement]
 
-    # Added 'error_stmt' here for recovery
     @_('declaration', 'assignment', 'control_flow', 'probe_stmt',
        'func_decl', 'record_decl', 'block', 'return_stmt',
        'break_stmt', 'continue_stmt', 'expr_stmt', 'error_stmt')
     def statement(self, p):
         return p[0]
 
-    # --- ERROR RECOVERY RULE ---
-    # Catches errors and syncs to the next semicolon or closing brace
     @_('error SEMICOLON', 'error RBRACE')
     def error_stmt(self, p):
         return None
 
-    # --- Declarations ---
-
-    # 1. Standard: float32 scalar x = 1.0;
     @_('dtype shape_type ID ASSIGN expr SEMICOLON')
     def declaration(self, p):
         return ast.VarDecl(p.dtype, p.shape_type, p.ID, p.expr, lineno=p.lineno)
 
-    # 2. Standard (No Init): float32 scalar x;
     @_('dtype shape_type ID SEMICOLON')
     def declaration(self, p):
         return ast.VarDecl(p.dtype, p.shape_type, p.ID, None, lineno=p.lineno)
 
-    # 3. Auto Inference: auto x = [1, 2, 3];
     @_('AUTO ID ASSIGN expr SEMICOLON')
     def declaration(self, p):
         return ast.VarDecl('auto', None, p.ID, p.expr, lineno=p.lineno)
 
-    # 4. Custom Type: Layer my_layer;
     @_('ID ID SEMICOLON')
     def declaration(self, p):
         return ast.VarDecl(p.ID0, None, p.ID1, None, lineno=p.lineno)
 
-    # 5. Pointer: float32 scalar *x = &y;
     @_('dtype shape_type TIMES ID ASSIGN AMPERSAND ID SEMICOLON')
     def declaration(self, p):
         return ast.PointerDecl(p.dtype, p.shape_type, p.ID0, p.ID1, lineno=p.lineno)
 
-    # --- Functions ---
     @_('FUNC ID LPAREN param_list RPAREN ARROW dtype shape_type block')
     def func_decl(self, p):
         return ast.FuncDecl(p.ID, p.param_list, p.dtype, p.shape_type, p.block, lineno=p.lineno)
@@ -196,7 +191,6 @@ class QuantelParser(Parser):
     def param(self, p):
         return ast.FuncParam(p.ID0, None, p.ID1, lineno=p.lineno)
 
-    # --- Control Flow ---
     @_('LBRACE statements RBRACE')
     def block(self, p):
         return ast.Block(p.statements, lineno=p.lineno)
@@ -233,7 +227,6 @@ class QuantelParser(Parser):
     def range(self, p):
         return ast.Range(p.NUMBER0, p.NUMBER1, p.expr, lineno=p.lineno)
 
-    # --- Assignments ---
     @_('target ASSIGN expr SEMICOLON',
        'target PLUS_ASSIGN expr SEMICOLON',
        'target MINUS_ASSIGN expr SEMICOLON',
@@ -243,22 +236,18 @@ class QuantelParser(Parser):
     def assignment(self, p):
         return ast.Assignment(p.target, p[1], p.expr, lineno=p.lineno)
 
-    # --- Targets & Slicing ---
     @_('ID')
     def target(self, p):
         return ast.Identifier(p.ID, lineno=p.lineno)
 
-    # Array Access: x[i]
     @_('target LBRACKET expr RBRACKET')
     def target(self, p):
         return ast.ArrayAccess(p.target, p.expr, lineno=p.lineno)
 
-    # 2D Array Access: x[i, j]
     @_('target LBRACKET expr COMMA expr RBRACKET')
     def target(self, p):
         return ast.ArrayAccess(p.target, [p.expr0, p.expr1], lineno=p.lineno)
 
-    # Slicing with RANGE: x[start..end]
     @_('target LBRACKET expr RANGE expr RBRACKET')
     def target(self, p):
         slice_node = ast.Slice(p.expr0, p.expr1, lineno=p.lineno)
@@ -268,10 +257,8 @@ class QuantelParser(Parser):
     def target(self, p):
         return ast.RecordAccess(p.target, p.ID, lineno=p.lineno)
 
-    # --- Expressions ---
     @_('BOOLEAN')
     def expr(self, p):
-        # Convert "true"/"false" to Python boolean
         val = True if p.BOOLEAN == 'true' else False
         return ast.Literal(val, lineno=p.lineno)
 
@@ -317,7 +304,6 @@ class QuantelParser(Parser):
     def expr(self, p):
         return ast.FuncCall(p.ID, p.arg_list, lineno=p.lineno)
 
-    # Array Literals: [1, 2, 3]
     @_('LBRACKET arg_list RBRACKET')
     def expr(self, p):
         return ast.ArrayLiteral(p.arg_list, lineno=p.lineno)
@@ -334,7 +320,6 @@ class QuantelParser(Parser):
     def arg_list(self, p):
         return []
 
-    # --- Shape Types ---
     @_('SCALAR')
     def shape_type(self, p):
         return ast.ShapeType('scalar', [], lineno=p.lineno)
@@ -359,7 +344,6 @@ class QuantelParser(Parser):
     def dim_list(self, p):
         return [p.NUMBER]
 
-    # --- Misc ---
     @_('PROBE LPAREN expr RPAREN SEMICOLON')
     def probe_stmt(self, p):
         return ast.Probe(p.expr, lineno=p.lineno)
@@ -392,9 +376,9 @@ class QuantelParser(Parser):
     def expr_stmt(self, p):
         return ast.ExprStmt(p.expr, lineno=p.lineno)
 
-    @_('DTYPE')
+    @_('DTYPE', 'ID')
     def dtype(self, p):
-        return p.DTYPE
+        return p[0]
 
     @_('')
     def empty(self, p):

@@ -8,7 +8,7 @@ from engine.lexer import QuantelLexer
 from engine.parser import QuantelParser
 import engine.ast as ast
 
-# NEW: Import the new modules you've built
+# NEW: Import the modules
 from engine.semantic_analyzer import SemanticAnalyzer
 from engine.optimizer import QuantelOptimizer
 from engine.tac_generator import TACGenerator
@@ -17,26 +17,12 @@ from engine.interpreter import QuantelInterpreter
 # --- GUI Import ---
 try:
     from gui.ide_window import QuantelIDE
+
     GUI_AVAILABLE = True
     GUI_ERROR = None
 except ImportError as e:
     GUI_AVAILABLE = False
     GUI_ERROR = str(e)
-
-
-def ast_to_dict(node):
-    """Recursively converts AST nodes to a dictionary for JSON printing."""
-    if node is None: return None
-    if isinstance(node, list): return [ast_to_dict(n) for n in node]
-    if isinstance(node, (str, int, float, bool)): return node
-    if isinstance(node, ast.Node):
-        node_dict = {"node_type": node.__class__.__name__}
-        if hasattr(node, '__dict__'):
-            for key, value in vars(node).items():
-                if key.startswith("_") or key == "lineno": continue
-                node_dict[key] = ast_to_dict(value)
-        return node_dict
-    return str(node)
 
 
 def run_cli():
@@ -48,27 +34,21 @@ def run_cli():
     parser.add_argument("-g", "--gui", action="store_true", help="Launch the Quantel IDE")
     parser.add_argument("-p", "--parse", action="store_true", help="Parse and print AST (JSON)")
     parser.add_argument("-l", "--lex", action="store_true", help="Tokenize and print tokens")
-    parser.add_argument("--lex-out", action="store_true", help="Output lexed tokens to the specified .txt file")
+    parser.add_argument("--lex-out", action="store_true", help="Output lexed tokens to output.txt")
     parser.add_argument("-t", "--tac", action="store_true", help="Show Optimized Three-Address Code")
 
     args = parser.parse_args()
 
-    # --- MODE 1: Launch GUI ---
+    # --- Launch GUI Mode ---
     if args.gui:
         if GUI_AVAILABLE:
-            print("--- Launching Quantel IDE ---")
-            target_file = args.file if args.file else "samples/base.qtl"
-            if target_file == "samples/base.qtl" and not os.path.exists(target_file):
-                os.makedirs("samples", exist_ok=True)
-                with open(target_file, "w") as f:
-                    f.write("// Quantel Base File\nvar x: int32 = 10 + 20;\nprobe x;\n")
-            app = QuantelIDE(file_path=target_file)
+            app = QuantelIDE(file_path=args.file if args.file else "samples/base.qtl")
             app.mainloop()
         else:
             print(f"Error: Could not launch GUI.\nDetails: {GUI_ERROR}")
         return
 
-    # --- Prepare Input ---
+    # --- Input Preparation ---
     code_input = ""
     source_name = "Input String"
 
@@ -82,56 +62,80 @@ def run_cli():
         with open(args.file, 'r') as f:
             code_input = f.read()
     else:
-        default_cli = "samples/base.qtl"
-        if os.path.exists(default_cli):
-            source_name = default_cli
-            with open(default_cli, 'r') as f:
-                code_input = f.read()
-        else:
-            parser.print_help()
-            return
+        parser.print_help()
+        return
+
+    # =========================================================================
+    #  COMPILATION PIPELINE
+    # =========================================================================
 
     # --- 1. LEXING ---
-    lexer = QuantelLexer()
-    tokens = lexer.tokenize(code_input)
+    lexer = QuantelLexer(print_errors=args.lex_out)
+    # We convert tokens to a list so we can check for errors before passing to parser
+    tokens = list(lexer.tokenize(code_input))
+    lexer_errors = lexer.get_errors() if hasattr(lexer, 'get_errors') else []
 
     if args.lex:
         for tok in tokens: print(tok)
         return
-    
+
     if args.lex_out:
-        # Create directory if it doesn't exist
         os.makedirs("samples", exist_ok=True)
-        
         with open("samples/output.txt", "w") as f:
-            for tok in tokens:
-                f.write(f"{tok}\n")
-
-            errors = lexer.get_errors()
-            if errors:
-                for msg in errors:
-                    f.write(f"{msg}\n")
+            for tok in tokens: f.write(f"{tok}\n")
+            # If you want errors in the file but NOT the console:
+            if lexer_errors:
+                f.write("\n--- LEXER ERRORS ---\n")
+                for err in lexer_errors:
+                    f.write(f"{err}\n")
+                    
+        print(f"Tokens written to samples/output.txt")
         return
+
     # --- 2. PARSING ---
-    print(f"--- Processing: {source_name} ---")
+    print(f"\n--- Processing: {source_name} ---")
     quantel_parser = QuantelParser()
-    tree = quantel_parser.parse(tokens)
-
-    if quantel_parser.errors or not tree:
-        print("\n!!! Parser Errors Found !!!")
-        for err in quantel_parser.errors: print(f" - {err}")
-        return
+    tree = quantel_parser.parse(iter(tokens))
+    parser_errors = quantel_parser.errors
 
     # --- 3. SEMANTIC ANALYSIS ---
-    # We do this before optimization to ensure the original code is valid
-    print("\n--- Semantic Analysis ---")
-    analyzer = SemanticAnalyzer()
-    semantic_errors = analyzer.analyze(tree)
+    semantic_errors = []
+    if tree:
+        analyzer = SemanticAnalyzer()
+        # Ensure analyze() is calling the visit methods correctly
+        semantic_errors = analyzer.analyze(tree)
 
-    if semantic_errors:
-        print("\n!!! Semantic Errors Found !!!")
-        for err in semantic_errors: print(f" - {err}")
-        return
+    # =========================================================================
+    #  GLOBAL ERROR SUMMARY
+    # =========================================================================
+    total_errors = len(lexer_errors) + len(parser_errors) + len(semantic_errors)
+
+    if total_errors > 0:
+        print("\n" + "!" * 60)
+        print(f" COMPILATION FAILED: {total_errors} Total Errors Found")
+        print("!" * 60)
+
+        if lexer_errors:
+            print(f"\n[ Lexer Errors: {len(lexer_errors)} ]")
+            for err in lexer_errors: print(f"  -> {err}")
+
+        if parser_errors:
+            print(f"\n[ Parser Errors: {len(parser_errors)} ]")
+            for err in parser_errors: print(f"  -> {err}")
+
+        if semantic_errors:
+            print(f"\n[ Semantic Errors: {len(semantic_errors)} ]")
+            for err in semantic_errors: print(f"  -> {err}")
+
+        print("\n" + "!" * 60)
+        print("Execution halted due to errors.")
+        sys.exit(1)
+
+    # =========================================================================
+    #  BACK-END (Optimization & Execution)
+    # =========================================================================
+
+    print("--- Analysis Successful (0 Errors) ---")
 
     # --- 4. OPTIMIZATION ---
     print("\n--- Optimizing AST ---")
@@ -144,11 +148,10 @@ def run_cli():
         tac_gen = TACGenerator()
         print(tac_gen.generate(optimized_tree))
 
-    # --- 6. EXECUTION (Interpreter) ---
+    # --- 6. EXECUTION ---
     print("\n--- Executing Program ---")
     interpreter = QuantelInterpreter()
     try:
-        # We run the optimized tree for better performance
         interpreter.interpret(optimized_tree)
         print("\n[Program Finished Successfully]")
     except Exception as e:

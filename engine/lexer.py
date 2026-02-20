@@ -17,10 +17,11 @@ class QuantelLexer(Lexer):
 
     ignore = ' \t'
 
-    def __init__(self):
+    def __init__(self, print_errors=False):
         super().__init__()
         self.errors = []
         self.lineno = 1
+        self.print_errors = print_errors
 
     @_(r'\n+')
     def ignore_newline(self, t):
@@ -128,7 +129,8 @@ class QuantelLexer(Lexer):
     def error(self, t):
         msg = f"Lexer Error: Illegal character '{t.value[0]}' at line {self.lineno}"
         self.errors.append(msg)
-        print(msg)
+        if not self.print_errors:
+            print(msg)
         self.index += 1
 
     def get_errors(self):
