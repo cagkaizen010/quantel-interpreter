@@ -70,7 +70,7 @@ def run_cli():
     # =========================================================================
 
     # --- 1. LEXING ---
-    lexer = QuantelLexer()
+    lexer = QuantelLexer(print_errors=args.lex_out)
     # We convert tokens to a list so we can check for errors before passing to parser
     tokens = list(lexer.tokenize(code_input))
     lexer_errors = lexer.get_errors() if hasattr(lexer, 'get_errors') else []
@@ -83,6 +83,12 @@ def run_cli():
         os.makedirs("samples", exist_ok=True)
         with open("samples/output.txt", "w") as f:
             for tok in tokens: f.write(f"{tok}\n")
+            # If you want errors in the file but NOT the console:
+            if lexer_errors:
+                f.write("\n--- LEXER ERRORS ---\n")
+                for err in lexer_errors:
+                    f.write(f"{err}\n")
+                    
         print(f"Tokens written to samples/output.txt")
         return
 
