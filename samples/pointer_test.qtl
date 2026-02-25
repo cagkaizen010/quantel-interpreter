@@ -1,0 +1,4 @@
+float32 scalar total_activation = 0.0;
+float32 scalar *ptr = &total_activation;
+
+probe(ptr);

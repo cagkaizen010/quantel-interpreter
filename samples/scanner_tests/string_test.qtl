@@ -1,0 +1,7 @@
+auto string_var = "testing";
+probe(string_var);
+
+auto string_1 = "a";
+auto string_2 = "b";
+string_1 string_3;
+probe(string_1);

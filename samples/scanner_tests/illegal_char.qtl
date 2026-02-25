@@ -1,0 +1,27 @@
+// Flag characters that are not part of Quantel's alphabet, or outside of their allowed context.
+
+
+
+int32 scalar valid_1 = 1;
+int32 scalar valid_2 = 2;
+probe(valid_1);
+
+
+// Invalid Quantel Characters used in declaration
+// ~, `, $, ?, :
+int32 scalar invalid~var_0 = 23;
+int32 scalar invalid`var_1 = 23;
+int32 scalar invalid$var_3 = 23;
+int32 scalar invalid?var_4 = 23;
+int32 scalar invalid:var_5 = 23;
+
+// Invalid Quantel Characters used in operation
+int32 scalar new_valid_1 = valid_1 ~ valid_2;
+int32 scalar new_valid_2 = valid_1 ` valid_2;
+int32 scalar new_valid_3 = valid_1 $ valid_2;
+int32 scalar new_valid_4 = valid_1 ? valid_2 : valid_1;
+
+auto string_var = "testing";
+probe(string_var);
+// Invalid Numeric Literals
+int32 scalar invalid_literal = 12.34.56;
