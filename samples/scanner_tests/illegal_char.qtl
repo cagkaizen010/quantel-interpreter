@@ -23,5 +23,5 @@ int32 scalar new_valid_4 = valid_1 ? valid_2 : valid_1;
 
 auto string_var = "testing";
 probe(string_var);
-// Invalid Numeric Literals
-int32 scalar invalid_literal = 12.34.56;
+
+

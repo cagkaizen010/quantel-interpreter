@@ -3,5 +3,5 @@ probe(string_var);
 
 auto string_1 = "a";
 auto string_2 = "b";
-string_1 string_3;
+string_3 = string_1;
 probe(string_1);
