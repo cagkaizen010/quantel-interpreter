@@ -1,0 +1,61 @@
+import mathLib;
+import ioLib;
+
+record NeuralNetwork {
+    float32 matrix<4,4> weights;
+    float16 vector<4> bias;
+}
+
+int32 scalar x = 10;
+int64 scalar y = 20;
+bool scalar flag = 1;
+
+float32 vector<5> vec;
+float64 matrix<3,3> mat;
+int32 tensor<2,4,6> ten;
+
+int32 scalar * ptr = & x;
+
+x = 5 + 3 * (2 ^ 3) - 1;
+y += -5;
+vec[1] -= 4 / 2;
+mat *= 10 % 3;
+ten[2] /= 2;
+mat[1] @= 5;
+
+point.x = x @ 2;
+
+if (x == 20) {
+    x = x + 1;
+} else {
+    if (x != 5) {
+        x = x - 1;
+    }
+}
+
+while (y > 0) {
+    y -= 1;
+    if (y <= 2) {
+        break;
+    }
+}
+
+for i in 1..10 step 2 {
+    if (i < 5) {
+        continue;
+    }
+    vec[2] = i;
+}
+
+for j in 1..5 {
+    vec = j;
+}
+
+repeat {
+    x += 1;
+} until (x >= 50);
+
+probe(point.x);
+probe(x);
+probe(vec[1]);
+

@@ -1,0 +1,71 @@
+// ========================================================================
+//  QUANTEL SYSTEM INTEGRITY TEST
+//  Validation: Fixed for strict (DTYPE + SHAPE) requirement
+// ========================================================================
+
+import math;
+
+// [TEST 2] Record Definitions
+// Rules: RECORD ID LBRACE decl_list RBRACE
+record NeuralConfig {
+    float32 scalar learning_rate;
+    int32 scalar max_epochs;
+    bool scalar is_active;
+}
+
+// [TEST 3] Function Declaration
+// Rules: FUNC ID ... ARROW dtype shape_type block 
+// CompOp, Block, argList, paramList
+func relu_activation(float32 scalar val, float32 scalar x) -> float32 scalar {
+    if (val > 0.0 && val < 100.0) {
+        return val;
+    } else {
+        return 0.0;
+    }
+}
+
+// [TEST 5] Linear Algebra
+// Rules: matrix < num, num > and vector < num >
+// Shape Type, Matrix
+float32 matrix<3,3> Weights = [
+    [0.5, -0.2, 0.1],
+    [0.9,  0.0, -0.3],
+    [0.2,  0.1,  0.4]
+];
+
+// [TEST 6] Mathematical Operations
+// Using AUTO for inference (Parser Rule 3)
+// Matrix multiplication @
+float32 vector<3> input_vec = [1.0, 2.0, 0.5];
+float32 vector<3> bias = [0.1, 0.1, -0.5];
+auto z = Weights @ input_vec + bias;
+probe(z);
+
+// [TEST 7] Slicing
+// range
+auto subset = z[0..2];
+
+
+// [TEST 8] Iteration
+float32 scalar total_activation = 0.0;
+
+for i in 0..3 {
+    // Note: 'val' and 'activated' use auto for simplicity
+    auto val = z[i];
+    auto activated = relu_activation(val, 3);
+    total_activation += activated;
+}
+probe(total_activation);
+
+
+// [TEST 9] Control Flow
+int32 scalar safe_mode = 2;
+while (safe_mode != 0) {
+    if (total_activation > 100.0) {
+        // break; 
+		safe_mode = safe_mode -1;
+    }
+    else {
+		 safe_mode = safe_mode -1; 
+	}
+}
