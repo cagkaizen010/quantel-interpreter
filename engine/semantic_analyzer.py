@@ -285,9 +285,16 @@ class SemanticAnalyzer:
         if cls == 'Identifier':
             s = self.lookup(node.name)
             return s.symbol_type if s else "unknown"
+        if cls == 'UnaryOp':
+            if node.op == '!': return "bool"
+            return self.get_type(node.operand)
+        if cls == 'FuncCall':
+            s = self.lookup(node.name)
+            return s.symbol_type if s else "unknown"
         if cls == 'ArrayAccess':
             # Indexing usually reduces dimension but preserves base type
-            return self.get_type(getattr(node, 'target', None) or getattr(node, 'name', None))
+            target = getattr(node, 'target', None) or getattr(node, 'name', None)
+            return self.get_type(target)
         if cls == 'RecordAccess':
             target_type = self.get_type(node.record)
             record_def = self.history.get(target_type)
@@ -297,6 +304,14 @@ class SemanticAnalyzer:
         if cls == 'BinOp':
             if node.op in ['&&', '||']: return "bool"
             lt, rt = self.get_type(node.left), self.get_type(node.right)
+            
+            # Numeric Compatibility: Allow int and float mixing
+            is_numeric = lambda t: t in ['int32', 'int64', 'float32', 'float64', 'float16']
+            if is_numeric(lt) and is_numeric(rt):
+                # Return 'float32' if either is float, else 'int32' (simplified)
+                if 'float' in lt or 'float' in rt: return 'float32'
+                return 'int32'
+
             if lt != rt and "unknown" not in [lt, rt]:
                 self._report_error(node, "Incompatible types", f"Cannot operate on {lt} and {rt}.")
             return lt
@@ -308,6 +323,8 @@ class SemanticAnalyzer:
         cls = node.__class__.__name__
 
         if cls == 'Literal': return []
+        if cls == 'UnaryOp': return self.get_shape(node.operand)
+        if cls == 'FuncCall': return [] # Functions in Quantel usually return scalars or fixed shapes
 
         if cls == 'ArrayLiteral':
             # Recursive Detection: [ [1,2], [3,4] ] -> [2, 2]

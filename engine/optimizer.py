@@ -70,6 +70,12 @@ class QuantelOptimizer:
                     del self.constants[target_name]
         return node
 
+    def visit_InputStmt(self, node):
+        # Variables modified by input should not be considered constants
+        if node.name in self.constants:
+            del self.constants[node.name]
+        return node
+
     def visit_Identifier(self, node):
         # Swap 'i' for '0' if we know 'i' is 0
         if node.name in self.constants:
@@ -161,26 +167,11 @@ class QuantelOptimizer:
 
     def _evaluate_binop(self, op, left, right):
         ops = {
-        # Arithmetic
-        '+':  lambda a, b: a + b,
-        '-':  lambda a, b: a - b,
-        '*':  lambda a, b: a * b,
-        '/':  lambda a, b: a / b,
-        '%':  lambda a, b: a % b,
-        '^':  lambda a, b: a ** b,
-        '@':  lambda a, b: np.matmul(a, b),
-        
-        # Comparisons (Wrapped in bool() to prevent NumPy/Int leaks)
-        '>':  lambda a, b: bool(a > b),
-        '<':  lambda a, b: bool(a < b),
-        '>=': lambda a, b: bool(a >= b),
-        '<=': lambda a, b: bool(a <= b),
-        '==': lambda a, b: bool(a == b),
-        '!=': lambda a, b: bool(a != b),
-        
-        # Logical Operators
-        # Using bool() here ensures '&&' returns True/False, not the last truthy value
-        '&&': lambda a, b: bool(a and b),
-        '||': lambda a, b: bool(a or b)
+            '+': lambda a, b: a + b, '-': lambda a, b: a - b,
+            '*': lambda a, b: a * b, '/': lambda a, b: a / b if isinstance(a, float) or isinstance(b, float) else a // b,
+            '%': lambda a, b: a % b, '^': lambda a, b: a ** b,
+            '>': lambda a, b: a > b, '<': lambda a, b: a < b,
+            '>=': lambda a, b: a >= b, '<=': lambda a, b: a <= b,
+            '==': lambda a, b: a == b, '!=': lambda a, b: a != b
         }
         return ops.get(op, lambda a, b: 0)(left, right)
