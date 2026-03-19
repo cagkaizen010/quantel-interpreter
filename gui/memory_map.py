@@ -1,68 +1,67 @@
 import customtkinter as ctk
-import tkinter as tk
 from tabulate import tabulate
+
 
 class MemoryMapPanel(ctk.CTkFrame):
     def __init__(self, parent, **kwargs):
         super().__init__(parent, **kwargs)
-
-        # Layout configuration
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
-        # Header Label
-        self.label = ctk.CTkLabel(self, text="Live Memory Map", font=ctk.CTkFont(size=14, weight="bold"))
+        self.label = ctk.CTkLabel(self, text="Live Memory Map (Stack & Heap)", font=ctk.CTkFont(size=14, weight="bold"))
         self.label.grid(row=0, column=0, pady=(10, 5), sticky="ew")
 
-        # Text Area (Read-only) - Use a Monospaced font for table alignment
         self.text_area = ctk.CTkTextbox(self, state="disabled", font=("Courier New", 12), wrap="none")
         self.text_area.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
 
-    def update_map(self, environment):
+    def update_map(self, interpreter):
         """
-        Takes the Interpreter's global_env dictionary and formats it using tabulate.
+        Modified to accept the full interpreter object so we can access
+        both environment (Stack) and the separate Heap class.
         """
         self._clear()
 
-        if not environment:
-            self._write("Memory is empty.")
-            return
+        output = ""
 
-        # 1. Prepare data rows for tabulate
-        table_data = []
-        for name, val in environment.items():
-            # Get Address
-            mem_addr = f"0x{id(val):x}"
-
-            # Get Type (with Shape support for Tensors/Arrays)
+        # --- SECTION 1: GLOBAL ENVIRONMENT (The Stack) ---
+        env_data = []
+        for name, val in interpreter.global_env.items():
+            # If the value is an integer and likely a heap address, label it as a Pointer
             val_type = type(val).__name__
-            if hasattr(val, 'shape'):
-                # Formats as Arr(3,3) or Arr(3,)
-                val_type = f"Arr{tuple(val.shape)}" if len(val.shape) > 0 else "Arr()"
+            val_display = val
 
-            # Get Value and clean it up
-            val_str = str(val).replace('\n', ' ')
-            if len(val_str) > 50:
-                val_str = val_str[:47] + "..."
+            # Check if this variable points to our Heap
+            if isinstance(val, int) and 0 <= val < interpreter.heap.max_size:
+                val_type = "PTR (HeapAddr)"
+                val_display = f"-> @{val:02}"
 
-            table_data.append([mem_addr, name, val_type, val_str])
+            env_data.append([name, val_type, val_display])
 
-        # 2. Generate the table using tabulate
-        # 'github' format creates clean separators that look good in a terminal/textbox
-        formatted_table = tabulate(
-            table_data,
-            headers=["ADDRESS", "NAME", "TYPE", "VALUE"],
-            tablefmt="github",
-            stralign="left"
-        )
+        output += "=== GLOBAL VARIABLES (STACK) ===\n"
+        output += tabulate(env_data, headers=["NAME", "TYPE", "VALUE"], tablefmt="github")
+        output += "\n\n"
 
-        self._write(formatted_table)
+        # --- SECTION 2: THE HEAP (Showing the Gaps) ---
+        heap_data = []
+        # We loop through the full range of the heap to show the EMPTY slots
+        for addr in range(interpreter.heap.max_size):
+            if addr in interpreter.heap.memory:
+                content = interpreter.heap.memory[addr]
+                status = "ALLOCATED"
+            else:
+                content = "---"
+                status = "[ EMPTY GAP ]"
+
+            heap_data.append([f"@{addr:02}", status, content])
+
+        output += "=== HEAP MEMORY MAP ===\n"
+        output += tabulate(heap_data, headers=["ADDR", "STATUS", "DATA"], tablefmt="github")
+
+        self._write(output)
 
     def _write(self, content):
         self.text_area.configure(state="normal")
         self.text_area.insert("0.0", content)
-        # Scroll to top after inserting
-        self.text_area.see("1.0")
         self.text_area.configure(state="disabled")
 
     def _clear(self):

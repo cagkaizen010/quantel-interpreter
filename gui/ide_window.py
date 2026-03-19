@@ -194,7 +194,12 @@ class QuantelIDE(ctk.CTk):
                     # --- INTERPRETER ---
                     if QuantelInterpreter:
                         self.after(0, lambda: self.output_panel.write("Output", "--- Running Program ---\n", False))
-                        self.interpreter_instance = QuantelInterpreter()
+                        
+                        # Define a UI-thread callback for the interpreter to update the memory map live
+                        def live_update_cb(interpreter):
+                            self.after(0, lambda: self.memory_panel.update_map(interpreter))
+
+                        self.interpreter_instance = QuantelInterpreter(step_callback=live_update_cb)
                         
                         class GUIStream:
                             def __init__(self, panel, original, is_stdout=True):
@@ -219,7 +224,7 @@ class QuantelIDE(ctk.CTk):
                             sys.stdin = stream
                             self.interpreter_instance.interpret(ast_tree)
                             self.after(0, lambda: self.output_panel.write("Output", "\n[Finished]", False))
-                            self.after(0, lambda: self.memory_panel.update_map(self.interpreter_instance.global_env))
+                            self.after(0, lambda: self.memory_panel.update_map(self.interpreter_instance))
                         except Exception as e:
                             # Use default argument to capture e in lambda scope
                             self.after(0, lambda e_msg=str(e): self.output_panel.write("Output", f"\n[Runtime Error] {e_msg}\n", False, tag="red"))

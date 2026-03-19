@@ -12,7 +12,8 @@ class QuantelLexer(Lexer):
         AND, OR, NOT,
         ASSIGN, PLUS_ASSIGN, MINUS_ASSIGN, TIMES_ASSIGN, DIVIDE_ASSIGN, AT_ASSIGN,
         LPAREN, RPAREN, LBRACE, RBRACE, LBRACKET, RBRACKET,
-        COMMA, SEMICOLON, DOT, ARROW, AMPERSAND, RANGE, STEP
+        COMMA, SEMICOLON, DOT, ARROW, AMPERSAND, RANGE, STEP,
+        MALLOC, FREE, SHOW_HEAP
     }
 
     ignore = ' \t'
@@ -101,11 +102,16 @@ class QuantelLexer(Lexer):
         'record': 'RECORD',
         'const': 'CONST',
         'input': 'INPUT',
+        # shape type
         'scalar': 'SCALAR',
         'vector': 'VECTOR',
         'matrix': 'MATRIX',
         'tensor': 'TENSOR',
         'auto': 'AUTO',
+        # heap management
+        'malloc': 'MALLOC',
+        'free': 'FREE',
+        'show_heap': 'SHOW_HEAP',
         # dtypes
         'float32': 'DTYPE',
         'float64': 'DTYPE',

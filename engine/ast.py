@@ -202,3 +202,17 @@ class ArrayLiteral(Node):
     def __init__(self, elements, lineno=0):
         super().__init__(lineno)
         self.elements = elements
+
+class MallocExpr(Node):
+    def __init__(self, value, lineno=None):
+        self.value = value
+        self.lineno = lineno
+
+class FreeStmt(Node):
+    def __init__(self, name, lineno=None):
+        self.name = name
+        self.lineno = lineno
+
+class ShowHeap(Node):
+    def __init__(self, lineno=None):
+        self.lineno = lineno

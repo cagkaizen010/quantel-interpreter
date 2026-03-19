@@ -135,9 +135,21 @@ class QuantelParser(Parser):
 
     @_('declaration', 'assignment', 'control_flow', 'probe_stmt', 'input_stmt',
        'func_decl', 'record_decl', 'block', 'return_stmt',
-       'break_stmt', 'continue_stmt', 'expr_stmt', 'error_stmt')
+       'break_stmt', 'continue_stmt', 'expr_stmt', 'free_stmt', 'show_heap_stmt', 'error_stmt')
     def statement(self, p):
         return p[0]
+
+    @_('MALLOC LPAREN expr RPAREN')
+    def expr(self, p):
+        return ast.MallocExpr(p.expr, lineno=p.lineno)
+
+    @_('FREE LPAREN ID RPAREN SEMICOLON')
+    def free_stmt(self, p):
+        return ast.FreeStmt(p.ID, lineno=p.lineno)
+
+    @_('SHOW_HEAP LPAREN RPAREN SEMICOLON')
+    def show_heap_stmt(self, p):
+        return ast.ShowHeap(lineno=p.lineno)
 
     @_('error SEMICOLON', 'error RBRACE')
     def error_stmt(self, p):

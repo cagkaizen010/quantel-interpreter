@@ -1,5 +1,6 @@
 import numpy as np
 import sys
+from engine.heap import QuantelHeap
 
 
 # --- Custom Exceptions for Control Flow ---
@@ -18,11 +19,19 @@ class ContinueException(Exception):
 
 # --- Main Interpreter Class ---
 class QuantelInterpreter:
-    def __init__(self):
+    def __init__(self, step_callback=None):
         self.global_env = {}
-        self.global_types = {} # Stores declared types
+        self.global_types = {}
         self.local_env = None
         self.local_types = None
+
+        # 1. Initialize the Heap with a fixed size to show "Gaps"
+        self.heap = QuantelHeap(size=10)
+
+        # 2. Safety counter for infinite loops
+        self.execution_steps = 0
+        self.MAX_STEPS = 10000
+        self.step_callback = step_callback
 
     def interpret(self, tree):
         if not tree:
@@ -36,6 +45,15 @@ class QuantelInterpreter:
     def visit(self, node):
         if node is None:
             return None
+
+        # 1. Safety Break for Infinite Loops
+        self.execution_steps += 1
+        if self.execution_steps > self.MAX_STEPS:
+            raise Exception(f"Interpreter Safety Break: Maximum execution steps ({self.MAX_STEPS}) exceeded.")
+
+        # 2. Trigger UI update periodically if a callback is provided
+        if self.step_callback and self.execution_steps % 50 == 0:
+            self.step_callback(self)
 
         if isinstance(node, (int, float, str, bool, np.number)):
             return node
@@ -78,10 +96,17 @@ class QuantelInterpreter:
     #       Helper: Type Enforcement
     # ==========================================
     
-    def _check_type(self, name, val, expected_dtype, lineno):
+    def _check_type(self, name, val, expected_dtype, shape_node, lineno):
         if val is None or expected_dtype == 'auto' or expected_dtype == 'unknown':
             return val
+
+        # If a shape is provided (vector, matrix, tensor), we expect a numpy array
+        if shape_node and shape_node.base_type != 'scalar':
+            if not isinstance(val, np.ndarray):
+                raise Exception(f"Runtime Type Error at Line {lineno}: Cannot assign {type(val).__name__} to '{name}' (expected {shape_node.base_type} of {expected_dtype})")
+            return val
             
+        # Scalar checks
         if expected_dtype in ['int32', 'int']:
             if not isinstance(val, (int, np.integer)):
                 raise Exception(f"Runtime Type Error at Line {lineno}: Cannot assign {type(val).__name__} to '{name}' (expected {expected_dtype})")
@@ -104,24 +129,33 @@ class QuantelInterpreter:
         val = self.visit(node.value) if node.value else None
         
         # Runtime Type Check
-        val = self._check_type(node.name, val, node.dtype, getattr(node, 'lineno', '?'))
+        val = self._check_type(node.name, val, node.dtype, node.shape, getattr(node, 'lineno', '?'))
         
         env = self.local_env if self.local_env is not None else self.global_env
         types = self.local_types if self.local_types is not None else self.global_types
         
         env[node.name] = val
-        types[node.name] = node.dtype
+        # Store both dtype and shape info
+        types[node.name] = (node.dtype, node.shape)
+
+        # Trigger UI update
+        if self.step_callback:
+            self.step_callback(self)
         return val
 
     def visit_ConstDecl(self, node):
         val = self.visit(node.value)
-        val = self._check_type(node.name, val, node.dtype, getattr(node, 'lineno', '?'))
+        val = self._check_type(node.name, val, node.dtype, node.shape, getattr(node, 'lineno', '?'))
         
         env = self.local_env if self.local_env is not None else self.global_env
         types = self.local_types if self.local_types is not None else self.global_types
         
         env[node.name] = val
-        types[node.name] = node.dtype
+        types[node.name] = (node.dtype, node.shape)
+
+        # Trigger UI update
+        if self.step_callback:
+            self.step_callback(self)
         return val
 
     def visit_InputStmt(self, node):
@@ -129,7 +163,12 @@ class QuantelInterpreter:
         raw_val = input(prompt)
         
         types = self.local_types if self.local_types is not None else self.global_types
-        expected_dtype = types.get(node.name, 'string')
+        type_info = types.get(node.name, ('string', None))
+        
+        if isinstance(type_info, tuple):
+            expected_dtype, _ = type_info
+        else:
+            expected_dtype = type_info
         
         val = raw_val
         try:
@@ -144,6 +183,10 @@ class QuantelInterpreter:
         
         env = self.local_env if self.local_env is not None else self.global_env
         env[node.name] = val
+
+        # Trigger UI update
+        if self.step_callback:
+            self.step_callback(self)
         return val
 
     def visit_RecordDecl(self, node):
@@ -275,7 +318,7 @@ class QuantelInterpreter:
 
         for param_node, arg_val in zip(func_node.params, arg_values):
             self.local_env[param_node.name] = arg_val
-            self.local_types[param_node.name] = param_node.dtype
+            self.local_types[param_node.name] = (param_node.dtype, param_node.shape)
 
         result = None
         try:
@@ -339,8 +382,13 @@ class QuantelInterpreter:
 
         if target_name:
             # Runtime Type Check for assignment
-            dtype = types.get(target_name, 'unknown')
-            val = self._check_type(target_name, val, dtype, getattr(node, 'lineno', '?'))
+            type_info = types.get(target_name, ('unknown', None))
+            if isinstance(type_info, tuple):
+                dtype, shape = type_info
+            else:
+                dtype, shape = type_info, None
+
+            val = self._check_type(target_name, val, dtype, shape, getattr(node, 'lineno', '?'))
             
             if node.op == '=':
                 env[target_name] = val
@@ -357,6 +405,10 @@ class QuantelInterpreter:
                     env[target_name] = current * val
                 elif node.op == '/=':
                     env[target_name] = current / val
+
+            # Trigger UI update
+            if self.step_callback:
+                self.step_callback(self)
         return val
 
     # ==========================================
@@ -428,3 +480,25 @@ class QuantelInterpreter:
         print("")
 
         return val
+
+    def visit_MallocExpr(self, node):
+        val = self.visit(node.value)
+        addr = self.heap.malloc(val)  # Returns address integer
+        
+        # Trigger immediate UI update for heap allocation
+        if self.step_callback:
+            self.step_callback(self)
+        return addr
+
+    def visit_FreeStmt(self, node):
+        # Get the address stored in the variable name
+        env = self.local_env if self.local_env is not None else self.global_env
+        address = env.get(node.name)
+        self.heap.free(address)
+
+        # Trigger immediate UI update for heap free
+        if self.step_callback:
+            self.step_callback(self)
+
+    def visit_ShowHeap(self, node):
+        print(self.heap)  # Uses the __repr__ we wrote earlier to show Gaps
