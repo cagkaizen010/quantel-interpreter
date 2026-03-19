@@ -2,12 +2,14 @@ import customtkinter as ctk
 import tkinter as tk
 from tabulate import tabulate
 import re
+import queue
 
 class OutputPanel(ctk.CTkFrame):
     def __init__(self, parent, on_line_click=None, **kwargs):
-        # Remove custom arg before passing to CTkFrame to avoid ValueError
         super().__init__(parent, **kwargs)
         self.on_line_click = on_line_click
+        self.input_queue = queue.Queue()
+        self.prompt_mark = "input_start"
 
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -25,7 +27,19 @@ class OutputPanel(ctk.CTkFrame):
 
             tb = ctk.CTkTextbox(self.tab_view.tab(name), font=technical_font, wrap="none")
             tb.grid(row=0, column=0, sticky="nsew")
-            tb.configure(state="disabled")
+            
+            if name != "Output":
+                tb.configure(state="disabled")
+            else:
+                tb.bind("<Return>", self._handle_return)
+                tb.bind("<Key>", self._on_key)
+                # Initialize the prompt mark
+                tb.mark_set(self.prompt_mark, "1.0")
+                tb.mark_gravity(self.prompt_mark, tk.LEFT)
+            
+            # Setup tags for color
+            tb.tag_config("red", foreground="#FF5555")
+                
             self.tabs[name] = tb
 
             if name == "Lexer":
@@ -34,6 +48,40 @@ class OutputPanel(ctk.CTkFrame):
         self.tabs["Lexer"].configure(text_color="#A9B7C6")
         self.tabs["Symbols"].configure(text_color="#58D68D")
         self.tabs["Errors"].configure(text_color="#FF5555")
+
+    def _on_key(self, event):
+        """Prevents editing history (terminal behavior)."""
+        widget = self.tabs["Output"]
+        
+        # If user tries to type or delete before the prompt, stop them
+        if widget.compare("insert", "<", self.prompt_mark):
+            # Only allow navigating keys
+            if event.keysym not in ["Left", "Right", "Up", "Down", "Prior", "Next"]:
+                return "break"
+        
+        # Special handling for Backspace at the very edge of the prompt
+        if event.keysym == "BackSpace":
+            if widget.compare("insert", "<=", self.prompt_mark):
+                return "break"
+
+    def _handle_return(self, event):
+        """Captures input and sends it to the queue."""
+        widget = self.tabs["Output"]
+        
+        # Get everything from the prompt mark to the end
+        user_input = widget.get(self.prompt_mark, "end-1c").strip("\n")
+        self.input_queue.put(user_input)
+        
+        # Advance the prompt mark to the end of this input (after the newline)
+        # We'll do this after the newline is actually inserted by the default handler
+        self.after(1, self._move_prompt_to_end)
+        
+        # Allow the default Return behavior to insert the newline
+
+    def _move_prompt_to_end(self):
+        widget = self.tabs["Output"]
+        widget.mark_set(self.prompt_mark, "end-1c")
+        widget.see(tk.END)
 
     def _handle_click(self, event):
         if not self.on_line_click: return
@@ -44,18 +92,39 @@ class OutputPanel(ctk.CTkFrame):
         if match:
             self.on_line_click(int(match.group(1)))
 
-    def write(self, tab_name, content, clear_first=True):
+    def write(self, tab_name, content, clear_first=True, tag=None):
         if tab_name not in self.tabs: return
         widget = self.tabs[tab_name]
-        widget.configure(state="normal")
-        if clear_first: widget.delete("1.0", "end")
-        widget.insert(tk.END, content + "\n")
-        widget.configure(state="disabled")
+        
+        # Only toggle state for tabs that are normally disabled
+        should_toggle = (tab_name != "Output")
+        if should_toggle: 
+            widget.configure(state="normal")
+        
+        if clear_first: 
+            widget.delete("1.0", "end")
+            if tab_name == "Output":
+                widget.mark_set(self.prompt_mark, "1.0")
+            
+        if tag:
+            widget.insert(tk.END, content, tag)
+        else:
+            widget.insert(tk.END, content)
+        
+        if tab_name == "Output":
+            # Update prompt mark to the end of the newly written output (the prompt)
+            widget.mark_set(self.prompt_mark, "end-1c")
+            widget.see(tk.END)
+            # Focus so user can type immediately
+            widget.focus_set()
+        
+        if should_toggle: 
+            widget.configure(state="disabled")
 
     def write_table(self, tab_name, data, headers):
         if tab_name not in self.tabs: return
         table_output = tabulate(data, headers=headers, tablefmt="github", stralign="left")
-        self.write(tab_name, table_output, clear_first=True)
+        self.write(tab_name, table_output + "\n", clear_first=True)
 
     def update_lexer_tab(self, token_list):
         rows = [[t.type, repr(t.value)[:37] + "..." if len(repr(t.value)) > 40 else repr(t.value), f"L{t.lineno}"] for t in token_list]
@@ -73,7 +142,15 @@ class OutputPanel(ctk.CTkFrame):
 
     def select_tab(self, tab_name): self.tab_view.set(tab_name)
 
-    def show_error(self, title, error_list):
+    def show_error(self, title, error_list, tab="Errors"):
         content = f"--- {title} ---\n" + "\n".join([str(e) for e in error_list])
-        self.write("Errors", content)
-        self.select_tab("Errors")
+        self.write(tab, content + "\n")
+        self.select_tab(tab)
+
+    def get_input(self):
+        """Blocks until input is available in the queue."""
+        # Clear any stale input first
+        while not self.input_queue.empty():
+            try: self.input_queue.get_nowait()
+            except: pass
+        return self.input_queue.get()

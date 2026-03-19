@@ -4,6 +4,8 @@ from tkinter import filedialog
 import io
 import contextlib
 import re
+import sys
+import threading
 
 # --- Project GUI Components ---
 from gui.editor_panel import EditorPanel
@@ -41,6 +43,7 @@ class QuantelIDE(ctk.CTk):
         self.show_memory = True
         self.show_tac = True
         self.interpreter_instance = None
+        self.execution_thread = None
 
         # 2. Main Layout
         self.main_pane = tk.PanedWindow(self, orient=tk.VERTICAL, bg="#2b2b2b", bd=0, sashwidth=6)
@@ -128,80 +131,107 @@ class QuantelIDE(ctk.CTk):
 
         code = self.editor_panel.get_text()
 
-        try:
-            # --- PHASE 1: LEXER ---
-            lexer = QuantelLexer()
-            tokens = list(lexer.tokenize(code))
-            self.output_panel.update_lexer_tab(tokens)
+        def execution_task():
+            try:
+                # --- PHASE 1: LEXER ---
+                lexer = QuantelLexer()
+                tokens = list(lexer.tokenize(code))
+                self.after(0, lambda: self.output_panel.update_lexer_tab(tokens))
 
-            if lexer.errors:
-                for err in lexer.errors:
-                    line = self._get_line_from_error(err)
-                    self.editor_panel.mark_error(line)
-                self.output_panel.show_error("Lexer Errors", lexer.errors)
-                return
+                if lexer.errors:
+                    for err in lexer.errors:
+                        line = self._get_line_from_error(err)
+                        self.after(0, lambda l=line: self.editor_panel.mark_error(l))
+                    self.after(0, lambda: self.output_panel.show_error("Lexer Errors", lexer.errors))
+                    return
 
-            # --- PHASE 2: PARSER ---
-            if not QuantelParser:
-                self.output_panel.show_error("Config Error", ["Parser missing."])
-                return
+                # --- PHASE 2: PARSER ---
+                if not QuantelParser:
+                    self.after(0, lambda: self.output_panel.show_error("Config Error", ["Parser missing."]))
+                    return
 
-            parser = QuantelParser()
-            ast_tree = parser.parse(iter(tokens), source_text=code)
+                parser = QuantelParser()
+                ast_tree = parser.parse(iter(tokens), source_text=code)
 
-            if parser.errors:
-                for err in parser.errors:
-                    line = self._get_line_from_error(err)
-                    self.editor_panel.mark_error(line)
-                self.output_panel.show_error("Parser Errors", parser.errors)
-                return
+                if parser.errors:
+                    for err in parser.errors:
+                        line = self._get_line_from_error(err)
+                        self.after(0, lambda l=line: self.editor_panel.mark_error(l))
+                    self.after(0, lambda: self.output_panel.show_error("Parser Errors", parser.errors))
+                    return
 
-            # --- PHASE 2.1: SEMANTIC ANALYSIS ---
-            from engine.semantic_analyzer import SemanticAnalyzer
-            analyzer = SemanticAnalyzer()
-            analyzer.analyze(ast_tree)
-            semantic_errors = analyzer.errors
+                # --- PHASE 2.1: SEMANTIC ANALYSIS ---
+                from engine.semantic_analyzer import SemanticAnalyzer
+                analyzer = SemanticAnalyzer()
+                analyzer.analyze(ast_tree)
+                semantic_errors = analyzer.errors
 
-            if semantic_errors:
-                for err in semantic_errors:
-                    line_match = re.search(r"\(Line (\d+)\)", err)
-                    if line_match:
-                        line = int(line_match.group(1))
-                        self.editor_panel.mark_error(line)
-                self.output_panel.show_error("Semantic Errors", semantic_errors)
-                return
-            else:
-                self.output_panel.update_symbols_tab(analyzer)
+                if semantic_errors:
+                    for err in semantic_errors:
+                        line_match = re.search(r"\(Line (\d+)\)", err)
+                        if line_match:
+                            line = int(line_match.group(1))
+                            self.after(0, lambda l=line: self.editor_panel.mark_error(l))
+                    self.after(0, lambda: self.output_panel.show_error("Semantic Errors", semantic_errors))
+                    return
+                else:
+                    self.after(0, lambda: self.output_panel.update_symbols_tab(analyzer))
 
-            if ast_tree:
-                # --- OPTIMIZER ---
-                if QuantelOptimizer:
-                    optimizer = QuantelOptimizer()
-                    ast_tree = optimizer.optimize(ast_tree)
-                    if optimizer.changed:
-                        self.output_panel.write("Output", "[Optimizer] Code optimized.\n", False)
+                if ast_tree:
+                    # --- OPTIMIZER ---
+                    if QuantelOptimizer:
+                        optimizer = QuantelOptimizer()
+                        ast_tree = optimizer.optimize(ast_tree)
+                        if optimizer.changed:
+                            self.after(0, lambda: self.output_panel.write("Output", "[Optimizer] Code optimized.\n", False))
 
-                # --- VISUALS ---
-                self.output_panel.write("AST", render_ast_tree(ast_tree))
+                    # --- VISUALS ---
+                    self.after(0, lambda: self.output_panel.write("AST", render_ast_tree(ast_tree)))
 
-                # --- INTEGRATED TAC VIEWING ---
-                self.tac_panel.generate_and_show(ast_tree)
+                    # --- INTEGRATED TAC VIEWING ---
+                    self.after(0, lambda: self.tac_panel.generate_and_show(ast_tree))
 
-                # --- INTERPRETER ---
-                if QuantelInterpreter:
-                    self.output_panel.write("Output", "--- Running Program ---\n", False)
-                    self.interpreter_instance = QuantelInterpreter()
-                    f = io.StringIO()
-                    try:
-                        with contextlib.redirect_stdout(f):
+                    # --- INTERPRETER ---
+                    if QuantelInterpreter:
+                        self.after(0, lambda: self.output_panel.write("Output", "--- Running Program ---\n", False))
+                        self.interpreter_instance = QuantelInterpreter()
+                        
+                        class GUIStream:
+                            def __init__(self, panel, original, is_stdout=True):
+                                self.panel = panel
+                                self.original = original
+                                self.is_stdout = is_stdout
+                            def write(self, s):
+                                if self.is_stdout:
+                                    self.original.write(s)
+                                    self.panel.after(0, lambda: self.panel.write("Output", s, False))
+                            def flush(self):
+                                self.original.flush()
+                            def readline(self):
+                                # This will block the background thread until input is available in the GUI
+                                return self.panel.get_input() + "\n"
+
+                        original_stdout = sys.stdout
+                        original_stdin = sys.stdin
+                        try:
+                            stream = GUIStream(self.output_panel, original_stdout)
+                            sys.stdout = stream
+                            sys.stdin = stream
                             self.interpreter_instance.interpret(ast_tree)
-                        self.output_panel.write("Output", f.getvalue() + "\n[Finished]", False)
-                        self.memory_panel.update_map(self.interpreter_instance.global_env)
-                    except Exception as e:
-                        self.output_panel.show_error("Runtime Error", [str(e)])
+                            self.after(0, lambda: self.output_panel.write("Output", "\n[Finished]", False))
+                            self.after(0, lambda: self.memory_panel.update_map(self.interpreter_instance.global_env))
+                        except Exception as e:
+                            # Use default argument to capture e in lambda scope
+                            self.after(0, lambda e_msg=str(e): self.output_panel.write("Output", f"\n[Runtime Error] {e_msg}\n", False, tag="red"))
+                        finally:
+                            sys.stdout = original_stdout
+                            sys.stdin = original_stdin
 
-        except Exception as e:
-            self.output_panel.show_error("System Error", [str(e)])
+            except Exception as e:
+                self.after(0, lambda e_msg=str(e): self.output_panel.show_error("System Error", [e_msg]))
+
+        self.execution_thread = threading.Thread(target=execution_task, daemon=True)
+        self.execution_thread.start()
 
     # -------------------------------------------------------------------------
     # UI HELPERS (Menus, Files, Toggles)

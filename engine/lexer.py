@@ -4,7 +4,7 @@ class QuantelLexer(Lexer):
     tokens = {
         ID, NUMBER, STRING,
         IMPORT, FUNC, RETURN, IF, ELSE, FOR, IN, WHILE, REPEAT, UNTIL,
-        BREAK, CONTINUE, PROBE, RECORD, CONST,
+        BREAK, CONTINUE, PROBE, RECORD, CONST, INPUT,
         SCALAR, VECTOR, MATRIX, TENSOR, AUTO,
         DTYPE, BOOLEAN,
         PLUS, MINUS, TIMES, DIVIDE, MOD, POWER, MATMUL,
@@ -100,6 +100,7 @@ class QuantelLexer(Lexer):
         'probe': 'PROBE',
         'record': 'RECORD',
         'const': 'CONST',
+        'input': 'INPUT',
         'scalar': 'SCALAR',
         'vector': 'VECTOR',
         'matrix': 'MATRIX',

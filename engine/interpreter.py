@@ -20,7 +20,9 @@ class ContinueException(Exception):
 class QuantelInterpreter:
     def __init__(self):
         self.global_env = {}
+        self.global_types = {} # Stores declared types
         self.local_env = None
+        self.local_types = None
 
     def interpret(self, tree):
         if not tree:
@@ -28,7 +30,7 @@ class QuantelInterpreter:
         try:
             return self.visit(tree)
         except Exception as e:
-            print(f"\n--- Runtime Error ---\n{e}")
+            # Let the caller (CLI or GUI) handle the error reporting
             raise e
 
     def visit(self, node):
@@ -73,20 +75,73 @@ class QuantelInterpreter:
         return result
 
     # ==========================================
+    #       Helper: Type Enforcement
+    # ==========================================
+    
+    def _check_type(self, name, val, expected_dtype, lineno):
+        if val is None or expected_dtype == 'auto' or expected_dtype == 'unknown':
+            return val
+            
+        if expected_dtype in ['int32', 'int']:
+            if not isinstance(val, (int, np.integer)):
+                raise Exception(f"Runtime Type Error at Line {lineno}: Cannot assign {type(val).__name__} to '{name}' (expected {expected_dtype})")
+        elif expected_dtype in ['float32', 'float64', 'float']:
+            if not isinstance(val, (float, int, np.floating, np.integer)):
+                raise Exception(f"Runtime Type Error at Line {lineno}: Cannot assign {type(val).__name__} to '{name}' (expected {expected_dtype})")
+        elif expected_dtype == 'bool':
+            if not isinstance(val, (bool, np.bool_)):
+                raise Exception(f"Runtime Type Error at Line {lineno}: Cannot assign {type(val).__name__} to '{name}' (expected bool)")
+        elif expected_dtype == 'string':
+            if not isinstance(val, str):
+                raise Exception(f"Runtime Type Error at Line {lineno}: Cannot assign {type(val).__name__} to '{name}' (expected string)")
+        return val
+
+    # ==========================================
     #       Declarations
     # ==========================================
 
     def visit_VarDecl(self, node):
-        val = None
-        if hasattr(node, 'value') and node.value is not None:
-            val = self.visit(node.value)
-
+        val = self.visit(node.value) if node.value else None
+        
+        # Runtime Type Check
+        val = self._check_type(node.name, val, node.dtype, getattr(node, 'lineno', '?'))
+        
         env = self.local_env if self.local_env is not None else self.global_env
+        types = self.local_types if self.local_types is not None else self.global_types
+        
         env[node.name] = val
+        types[node.name] = node.dtype
         return val
 
     def visit_ConstDecl(self, node):
         val = self.visit(node.value)
+        val = self._check_type(node.name, val, node.dtype, getattr(node, 'lineno', '?'))
+        
+        env = self.local_env if self.local_env is not None else self.global_env
+        types = self.local_types if self.local_types is not None else self.global_types
+        
+        env[node.name] = val
+        types[node.name] = node.dtype
+        return val
+
+    def visit_InputStmt(self, node):
+        prompt = node.prompt if node.prompt else f"Enter value for {node.name}: "
+        raw_val = input(prompt)
+        
+        types = self.local_types if self.local_types is not None else self.global_types
+        expected_dtype = types.get(node.name, 'string')
+        
+        val = raw_val
+        try:
+            if expected_dtype in ['int32', 'int']:
+                val = int(raw_val)
+            elif expected_dtype in ['float32', 'float64', 'float']:
+                val = float(raw_val)
+            elif expected_dtype == 'bool':
+                val = raw_val.lower() in ['true', '1', 'yes']
+        except ValueError:
+            raise Exception(f"Runtime Input Error: Expected {expected_dtype} for '{node.name}', but got '{raw_val}'")
+        
         env = self.local_env if self.local_env is not None else self.global_env
         env[node.name] = val
         return val
@@ -191,13 +246,19 @@ class QuantelInterpreter:
             return None
 
         if node.name == 'input':
-            prompt = str(self.visit(node.args[0])) if node.args else ""
+            if len(node.args) >= 2:
+                prompt = str(self.visit(node.args[1]))
+            elif len(node.args) == 1:
+                prompt = str(self.visit(node.args[0]))
+            else:
+                prompt = ""
+                
             val = input(prompt)
-            # Numeric conversion logic
+            # Standard numeric inference for built-in input() function
             try:
                 if '.' in val: return float(val)
                 return int(val)
-            except ValueError:
+            except (ValueError, TypeError):
                 return val
 
         func_node = self.global_env.get(node.name)
@@ -205,11 +266,14 @@ class QuantelInterpreter:
             raise Exception(f"Function '{node.name}' not defined.")
 
         prev_env = self.local_env
+        prev_types = self.local_types
         self.local_env = {}
+        self.local_types = {}
 
         for param_node, arg_expr in zip(func_node.params, node.args):
             arg_value = self.visit(arg_expr)
             self.local_env[param_node.name] = arg_value
+            self.local_types[param_node.name] = param_node.dtype
 
         result = None
         try:
@@ -218,6 +282,7 @@ class QuantelInterpreter:
             result = r.value
         finally:
             self.local_env = prev_env
+            self.local_types = prev_types
 
         return result
 
@@ -264,11 +329,17 @@ class QuantelInterpreter:
 
     def visit_Assignment(self, node):
         val = self.visit(node.value)
+        
         env = self.local_env if self.local_env is not None else self.global_env
-
+        types = self.local_types if self.local_types is not None else self.global_types
+        
         target_name = node.target.name if hasattr(node.target, 'name') else None
 
         if target_name:
+            # Runtime Type Check for assignment
+            dtype = types.get(target_name, 'unknown')
+            val = self._check_type(target_name, val, dtype, getattr(node, 'lineno', '?'))
+            
             if node.op == '=':
                 env[target_name] = val
             else:
