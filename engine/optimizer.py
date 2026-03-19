@@ -62,11 +62,11 @@ class QuantelOptimizer:
         target_name = getattr(node.target, 'name', None)
 
         if target_name:
-            if self._is_constant(node.value):
-                # Update constant map: i = 0
+            # ONLY propagate if it's a standard assignment
+            if node.op == '=' and self._is_constant(node.value):
                 self.constants[target_name] = node.value.value
             else:
-                # If variable is assigned something non-constant, forget previous value
+                # If it's +=, -=, etc., the variable is no longer a "known" simple constant
                 if target_name in self.constants:
                     del self.constants[target_name]
         return node
@@ -78,11 +78,11 @@ class QuantelOptimizer:
         return node
 
     def visit_Identifier(self, node):
-        # Swap 'i' for '0' if we know 'i' is 0
+        # If the variable name is in our map, it means it's safe to fold
+        # (because if it were in a loop, visit_WhileStmt would have deleted it)
         if node.name in self.constants:
             self.changed = True
-            val = self.constants[node.name]
-            return Literal(val, lineno=node.lineno)
+            return Literal(self.constants[node.name], lineno=node.lineno)
         return node
 
     # --- Structural Optimizations ---
@@ -163,6 +163,33 @@ class QuantelOptimizer:
         node.body = self.visit(node.body)
         return node
 
+    def visit_WhileStmt(self, node):
+        # 1. Find every variable modified inside the loop body
+        dirty_vars = self._get_modified_vars(node.body)
+
+        # 2. Remove those variables from our constant map temporarily
+        # so we don't accidentally fold them in the condition or body
+        for var in dirty_vars:
+            if var in self.constants:
+                del self.constants[var]
+
+        # 3. Now optimize the condition and body normally
+        node.condition = self.visit(node.condition)
+        node.body = self.visit(node.body)
+        return node
+
+    def visit_RepeatUntilStmt(self, node):
+        # 1. Clear constants modified in the loop
+        dirty_vars = self._get_modified_vars(node.body)
+        for var in dirty_vars:
+            if var in self.constants:
+                del self.constants[var]
+
+        # 2. Optimize the body and the condition
+        node.body = self.visit(node.body)
+        node.condition = self.visit(node.condition)
+        return node
+
     def _is_constant(self, node):
         return node.__class__.__name__ == 'Literal'
 
@@ -191,3 +218,48 @@ class QuantelOptimizer:
             '||': lambda a, b: bool(a or b)
         }
         return ops.get(op, lambda a, b: 0)(left, right)
+
+    def _get_modified_vars(self, node):
+        """Returns a set of variable names modified within this node/block."""
+        modified = set()
+
+        if node is None:
+            return modified
+
+        # If it's a list of statements (like a block body)
+        if isinstance(node, list):
+            for stmt in node:
+                modified.update(self._get_modified_vars(stmt))
+
+        # Standard Assignment (x = 5) or Augmented Assignment (x += 1)
+        elif node.__class__.__name__ in ['Assignment', 'AugmentedAssignment']:
+            if hasattr(node.target, 'name'):
+                modified.add(node.target.name)
+
+        # Input Statement (input(x))
+        elif node.__class__.__name__ == 'InputStmt':
+            if hasattr(node, 'name'):
+                modified.add(node.name)
+
+        # For Loops (the loop variable changes every iteration!)
+        elif node.__class__.__name__ == 'ForStmt':
+            if hasattr(node, 'loop_var'):
+                modified.add(node.loop_var)
+            if hasattr(node, 'body'):
+                modified.update(self._get_modified_vars(node.body))
+
+        # If Statements (check both paths)
+        elif node.__class__.__name__ == 'IfStmt':
+            modified.update(self._get_modified_vars(node.then_block))
+            if hasattr(node, 'else_block'):
+                modified.update(self._get_modified_vars(node.else_block))
+
+        # Generic recursion for anything with a 'body' (While, RepeatUntil, Blocks)
+        elif hasattr(node, 'body'):
+            modified.update(self._get_modified_vars(node.body))
+
+        # Check 'statements' attribute if the class uses that name instead of body
+        elif hasattr(node, 'statements'):
+            modified.update(self._get_modified_vars(node.statements))
+
+        return modified
