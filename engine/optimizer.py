@@ -1,4 +1,5 @@
 import copy
+import numpy as np
 from engine.ast import Literal, Assignment, Identifier, Block, VarDecl
 
 
@@ -167,11 +168,26 @@ class QuantelOptimizer:
 
     def _evaluate_binop(self, op, left, right):
         ops = {
-            '+': lambda a, b: a + b, '-': lambda a, b: a - b,
-            '*': lambda a, b: a * b, '/': lambda a, b: a / b if isinstance(a, float) or isinstance(b, float) else a // b,
-            '%': lambda a, b: a % b, '^': lambda a, b: a ** b,
-            '>': lambda a, b: a > b, '<': lambda a, b: a < b,
-            '>=': lambda a, b: a >= b, '<=': lambda a, b: a <= b,
-            '==': lambda a, b: a == b, '!=': lambda a, b: a != b
+            # Arithmetic
+            '+':  lambda a, b: a + b,
+            '-':  lambda a, b: a - b,
+            '*':  lambda a, b: a * b,
+            '/':  lambda a, b: a / b,
+            '%':  lambda a, b: a % b,
+            '^':  lambda a, b: a ** b,
+            '@':  lambda a, b: np.matmul(a, b),
+            
+            # Comparisons (Wrapped in bool() to prevent NumPy/Int leaks)
+            '>':  lambda a, b: bool(a > b),
+            '<':  lambda a, b: bool(a < b),
+            '>=': lambda a, b: bool(a >= b),
+            '<=': lambda a, b: bool(a <= b),
+            '==': lambda a, b: bool(a == b),
+            '!=': lambda a, b: bool(a != b),
+            
+            # Logical Operators
+            # Using bool() here ensures '&&' returns True/False, not the last truthy value
+            '&&': lambda a, b: bool(a and b),
+            '||': lambda a, b: bool(a or b)
         }
         return ops.get(op, lambda a, b: 0)(left, right)
