@@ -1,11 +1,12 @@
 class Symbol:
-    def __init__(self, name, symbol_type, category, shape=None, is_initialized=False, params_count=None):
+    def __init__(self, name, symbol_type, category, shape=None, is_initialized=False, params_count=None, is_const=False):
         self.name = name
         self.symbol_type = symbol_type
         self.category = category  # 'variable', 'function', 'record'
         self.shape = shape  # None=unknown, []=scalar, [n]=vector, [n,m]=matrix
         self.is_initialized = is_initialized
         self.params_count = params_count
+        self.is_const = is_const
 
 
 class SemanticAnalyzer:
@@ -14,6 +15,8 @@ class SemanticAnalyzer:
         self.history = {}
         self.errors = []
         self.current_function = None
+        # Predefine built-ins
+        self.define(None, 'print', 'unknown', 'function', params_count=-1)
 
     def _report_error(self, node, message, hint):
         lineno = getattr(node, 'lineno', '??')
@@ -28,12 +31,12 @@ class SemanticAnalyzer:
     def exit_scope(self):
         if len(self.scopes) > 1: self.scopes.pop()
 
-    def define(self, node, name, symbol_type, category, shape=None, initialized=False, params_count=None):
+    def define(self, node, name, symbol_type, category, shape=None, initialized=False, params_count=None, is_const=False):
         if name in self.scopes[-1]:
             self._report_error(node, f"Redeclaration of '{name}'", f"'{name}' is already defined in this block.")
             return None
 
-        symbol = Symbol(name, symbol_type, category, shape, initialized, params_count)
+        symbol = Symbol(name, symbol_type, category, shape, initialized, params_count, is_const)
         self.scopes[-1][name] = symbol
         # Use symbol_type as key for records to allow type-based lookup in visit_RecordAccess
         history_key = name if category != 'record' else name
@@ -105,6 +108,24 @@ class SemanticAnalyzer:
         self.define(node, node.name, v_type, 'variable', v_shape, node.value is not None)
         self.visit(node.value)
 
+    def visit_ConstDecl(self, node):
+        v_shape = getattr(node.shape, 'dims', []) if node.shape else []
+        v_type = node.dtype
+        if v_type == 'auto' and node.value:
+            v_type = self.get_type(node.value)
+            v_shape = self.get_shape(node.value)
+        self.define(node, node.name, v_type, 'variable', v_shape, initialized=True, is_const=True)
+        self.visit(node.value)
+
+    def visit_InputStmt(self, node):
+        symbol = self.lookup(node.name)
+        if not symbol:
+            self.define(node, node.name, 'string', 'variable', initialized=True)
+        else:
+            if symbol.is_const:
+                self._report_error(node, f"Cannot input into constant '{node.name}'", "Constants are immutable.")
+            symbol.is_initialized = True
+
     def visit_FuncDecl(self, node):
         p_count = len(node.params) if node.params else 0
         self.define(node, node.name, node.ret_type, 'function', initialized=True, params_count=p_count)
@@ -128,7 +149,7 @@ class SemanticAnalyzer:
                 self._report_error(node, f"'{node.name}' is not a function", f"It is a {symbol.category}.")
 
             args_given = len(node.args) if node.args else 0
-            if args_given != symbol.params_count:
+            if symbol.params_count != -1 and args_given != symbol.params_count:
                 self._report_error(node, "Argument mismatch", f"Expected {symbol.params_count}, got {args_given}.")
         self.visit(node.args)
 
@@ -153,6 +174,17 @@ class SemanticAnalyzer:
         self.visit(node.index)
 
     def visit_Assignment(self, node):
+        # Constant check
+        target = node.target
+        while hasattr(target, 'target') or hasattr(target, 'record'):
+            if hasattr(target, 'target'): target = target.target
+            else: target = target.record
+        
+        if hasattr(target, 'name'):
+            symbol = self.lookup(target.name)
+            if symbol and symbol.is_const:
+                self._report_error(node, f"Cannot reassign constant '{target.name}'", "Constants are immutable.")
+
         t_type = self.get_type(node.target)
         v_type = self.get_type(node.value)
         t_shape = self.get_shape(node.target)
@@ -173,6 +205,13 @@ class SemanticAnalyzer:
     def visit_BinOp(self, node):
         l_shape = self.get_shape(node.left)
         r_shape = self.get_shape(node.right)
+        l_type = self.get_type(node.left)
+        r_type = self.get_type(node.right)
+
+        if node.op in ['&&', '||']:
+            if l_type != 'bool' or r_type != 'bool':
+                self._report_error(node, "Logical Type Mismatch",
+                                   f"Operator '{node.op}' requires booleans, but got {l_type} and {r_type}.")
 
         if node.op == '@':
             if not l_shape or not r_shape:
@@ -202,6 +241,18 @@ class SemanticAnalyzer:
             self.visit(node.else_block)
             self.exit_scope()
 
+    def visit_WhileStmt(self, node):
+        self.visit(node.condition)
+        self.enter_scope()
+        self.visit(node.body)
+        self.exit_scope()
+
+    def visit_RepeatUntilStmt(self, node):
+        self.enter_scope()
+        self.visit(node.body)
+        self.exit_scope()
+        self.visit(node.condition)
+
     def visit_ForStmt(self, node):
         self.visit(node.range)
         self.enter_scope()
@@ -230,6 +281,7 @@ class SemanticAnalyzer:
         cls = node.__class__.__name__
         if cls == 'Literal': return self.get_type(node.value)
         if cls == 'ArrayLiteral': return "float32"  # Defaulting to float for matrices
+        if cls == 'CompareOp': return "bool"
         if cls == 'Identifier':
             s = self.lookup(node.name)
             return s.symbol_type if s else "unknown"
@@ -243,6 +295,7 @@ class SemanticAnalyzer:
                 return record_def.params_count.get(node.field, "unknown")
             return "unknown"
         if cls == 'BinOp':
+            if node.op in ['&&', '||']: return "bool"
             lt, rt = self.get_type(node.left), self.get_type(node.right)
             if lt != rt and "unknown" not in [lt, rt]:
                 self._report_error(node, "Incompatible types", f"Cannot operate on {lt} and {rt}.")

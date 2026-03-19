@@ -28,6 +28,14 @@ class VarDecl(Node):
         self.name = name
         self.value = value
 
+class ConstDecl(Node):
+    def __init__(self, dtype, shape, name, value, lineno=0):
+        super().__init__(lineno)
+        self.dtype = dtype
+        self.shape = shape
+        self.name = name
+        self.value = value
+
 class PointerDecl(Node):
     def __init__(self, dtype, shape, pointer_name, target_name, lineno=0):
         super().__init__(lineno)
@@ -128,6 +136,12 @@ class Probe(Node):
     def __init__(self, target, lineno=0):
         super().__init__(lineno)
         self.target = target
+
+class InputStmt(Node):
+    def __init__(self, name, prompt=None, lineno=0):
+        super().__init__(lineno)
+        self.name = name
+        self.prompt = prompt
 
 class ExprStmt(Node):
     def __init__(self, expr, lineno=0):

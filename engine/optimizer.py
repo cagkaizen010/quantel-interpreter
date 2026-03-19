@@ -53,6 +53,9 @@ class QuantelOptimizer:
             self.constants[node.name] = node.value.value
         return node
 
+    def visit_ConstDecl(self, node):
+        return self.visit_VarDecl(node)
+
     def visit_Assignment(self, node):
         node.value = self.visit(node.value)
         target_name = getattr(node.target, 'name', None)
@@ -98,9 +101,14 @@ class QuantelOptimizer:
         node.left = self.visit(node.left)
         node.right = self.visit(node.right)
         if self._is_constant(node.left) and self._is_constant(node.right):
-            val = self._evaluate_binop(node.op, node.left.value, node.right.value)
-            self.changed = True
-            return Literal(val, lineno=node.lineno)
+            try:
+                # Use _evaluate_binop safely
+                val = self._evaluate_binop(node.op, node.left.value, node.right.value)
+                self.changed = True
+                return Literal(val, lineno=node.lineno)
+            except Exception:
+                # If error (e.g. 1/0), don't optimize, leave for runtime or other stages
+                return node
         return node
 
     def visit_CompareOp(self, node):
