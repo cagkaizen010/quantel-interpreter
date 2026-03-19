@@ -1,0 +1,61 @@
+// Variable Declaration (Cover for all data types)
+// int64 scalar num1 = 5;
+// probe(num1);
+
+//float16 scalar num2 = 10;
+//probe(num1 + num2);
+
+//float32 scalar num3 = 2;
+
+
+
+// Complex Boolean
+// probe(num1 && num2);
+// Check for this, as they're not working
+// OPerators functioning as proper bool logic
+//	==, <, >
+// Broken:
+//	!=, <=, >=, &&, ||
+
+int32 scalar t = 5;
+
+bool scalar b1 = false;
+bool scalar b2 = true;
+
+int32 scalar testvar1 = 5;
+int32 scalar testvar2 = 10;
+
+probe(testvar1 + testvar2);
+probe(b1 || b2); 
+
+bool scalar b3 = 1 == 1;
+// probe(num1 + num2 * num3);
+// probe(num1 > num2);
+// probe(b3);
+
+// && and || operators aren't working properly,
+// 	returning 0 even if statement was true.
+// 
+// While Loops not working, need to have nested break statement 
+// for the loop to terminate
+
+// Do we have an input statement for our language?
+// Like something that prompts user input?
+
+
+
+
+bool scalar test1 = true;
+
+func scope_test_2(bool scalar input) -> bool scalar {
+	 return input && test1;
+}
+
+func scope_test() -> bool scalar{
+	bool scalar test2 = true;
+	return test2;
+}
+
+probe( scope_test_2(scope_test())  );
+
+

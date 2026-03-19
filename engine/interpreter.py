@@ -214,7 +214,7 @@ class QuantelInterpreter:
         left = self.visit(node.left)
         right = self.visit(node.right)
         op = node.op
-
+        print(op)
         try:
             if op == '+': return left + right
             if op == '-': return left - right
@@ -229,8 +229,12 @@ class QuantelInterpreter:
             if op == '>': return left > right
             if op == '<=': return left <= right
             if op == '>=': return left >= right
-            if op == '&&': return left and right
-            if op == '||': return left or right
+            if op == '&&': 
+                print("LOGICAL AND IN INTERPRETER")
+                return all([left, right])
+            if op == '||': 
+                return left or right
+
         except Exception as e:
             lineno = getattr(node, 'lineno', '?')
             raise Exception(f"Math Error at Line {lineno} ({op}): {e}")
@@ -242,9 +246,11 @@ class QuantelInterpreter:
 
     def visit_UnaryOp(self, node):
         val = self.visit(node.operand)
+        print("INSIDE UNARY")
         if node.op == '-': return -val
         if node.op == '!': return not val
-        if node.op == '&': return f"0x{id(val):x}"
+        if node.op == '&': 
+            return f"0x{id(val):x}"
         return val
 
     def visit_Assignment(self, node):

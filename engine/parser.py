@@ -274,6 +274,7 @@ class QuantelParser(Parser):
 
     @_('expr AND expr', 'expr OR expr')
     def expr(self, p):
+        print("AND or OR IS PARSED")
         return ast.BinOp(p.expr0, p[1], p.expr1, lineno=p.lineno)
 
     @_('LPAREN expr RPAREN')
