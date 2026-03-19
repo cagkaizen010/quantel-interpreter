@@ -6,6 +6,7 @@ import contextlib
 import re
 import sys
 import threading
+from CTkToolTip import CTkToolTip
 
 # --- Project GUI Components ---
 from gui.editor_panel import EditorPanel
@@ -45,7 +46,33 @@ class QuantelIDE(ctk.CTk):
         self.interpreter_instance = None
         self.execution_thread = None
 
-        # 2. Main Layout
+        # 2. Toolbar
+        self.toolbar = ctk.CTkFrame(self, height=35, corner_radius=0, fg_color="#333333")
+        self.toolbar.pack(side=tk.TOP, fill=tk.X)
+        
+        # Icon-based buttons packed to the right
+        self.step_btn = ctk.CTkButton(self.toolbar, text="⤵", width=30, height=24, 
+                                      text_color="white",
+                                      fg_color="#444444", hover_color="#555555", # Neutral when inactive
+                                      state="disabled", command=self.step_program)
+        self.step_btn.pack(side=tk.RIGHT, padx=5, pady=5)
+        self.step_tooltip = CTkToolTip(self.step_btn, message="Step Execution")
+
+        self.debug_btn = ctk.CTkButton(self.toolbar, text="⚙", width=30, height=24, 
+                                       text_color="white",
+                                       fg_color="#444444", hover_color="#555555",
+                                       command=self.debug_quantel_code)
+        self.debug_btn.pack(side=tk.RIGHT, padx=5, pady=5)
+        self.debug_tooltip = CTkToolTip(self.debug_btn, message="Debug Program")
+
+        self.run_btn = ctk.CTkButton(self.toolbar, text="▶", width=30, height=24, 
+                                     text_color="white",
+                                     fg_color="#444444", hover_color="#555555", 
+                                     command=self.run_quantel_code)
+        self.run_btn.pack(side=tk.RIGHT, padx=5, pady=5)
+        self.run_tooltip = CTkToolTip(self.run_btn, message="Run Program")
+
+        # 3. Main Layout
         self.main_pane = tk.PanedWindow(self, orient=tk.VERTICAL, bg="#2b2b2b", bd=0, sashwidth=6)
         self.main_pane.pack(fill=tk.BOTH, expand=True)
 
@@ -110,24 +137,38 @@ class QuantelIDE(ctk.CTk):
 
     def _get_line_from_error(self, err):
         """Intelligently finds a line number in an error object or string."""
+        # Check direct attributes
         for attr in ['lineno', 'line', 'row']:
             val = getattr(err, attr, None)
             if isinstance(val, int): return val
 
-        match = re.search(r"line (\d+)", str(err), re.IGNORECASE)
+        err_str = str(err)
+        # Patterns like "line 32", "Line 32", "(Line 32)"
+        match = re.search(r"line\s+(\d+)", err_str, re.IGNORECASE)
         if match:
             return int(match.group(1))
 
-        return 1
+        return None
 
     # -------------------------------------------------------------------------
     # CORE LOGIC: THE COMPILER PIPELINE
     # -------------------------------------------------------------------------
 
-    def run_quantel_code(self):
+    def run_quantel_code(self, debug_mode=False):
         self.output_panel.clear_all()
         self.editor_panel.clear_indicators()
         self.output_panel.select_tab("Output")
+
+        # Set active colors
+        self.run_btn.configure(state="disabled")
+        self.debug_btn.configure(state="disabled")
+        
+        if debug_mode:
+            self.debug_btn.configure(fg_color="#28a745") # Green when active
+            self.step_btn.configure(state="normal", fg_color="#1f538d") # Blue when active
+        else:
+            self.run_btn.configure(fg_color="#28a745") # Green when active
+            self.step_btn.configure(state="disabled", fg_color="#444444")
 
         code = self.editor_panel.get_text()
 
@@ -198,9 +239,16 @@ class QuantelIDE(ctk.CTk):
                         # Define a UI-thread callback for the interpreter to update the memory map live
                         def live_update_cb(interpreter):
                             self.after(0, lambda: self.memory_panel.update_map(interpreter))
+                            # Highlight current line
+                            if interpreter.current_node:
+                                line = getattr(interpreter.current_node, 'lineno', None)
+                                if line:
+                                    self.after(0, lambda l=line: self.editor_panel.highlight_line(l))
 
                         self.interpreter_instance = QuantelInterpreter(step_callback=live_update_cb)
-                        
+                        if debug_mode:
+                            self.interpreter_instance.step_mode = True
+
                         class GUIStream:
                             def __init__(self, panel, original, is_stdout=True):
                                 self.panel = panel
@@ -226,17 +274,32 @@ class QuantelIDE(ctk.CTk):
                             self.after(0, lambda: self.output_panel.write("Output", "\n[Finished]", False))
                             self.after(0, lambda: self.memory_panel.update_map(self.interpreter_instance))
                         except Exception as e:
+                            line = self._get_line_from_error(e)
+                            if line:
+                                self.after(0, lambda l=line: self.editor_panel.mark_error(l))
                             # Use default argument to capture e in lambda scope
                             self.after(0, lambda e_msg=str(e): self.output_panel.write("Output", f"\n[Runtime Error] {e_msg}\n", False, tag="red"))
                         finally:
                             sys.stdout = original_stdout
                             sys.stdin = original_stdin
+                            # Reset UI to Neutral
+                            self.after(0, lambda: self.run_btn.configure(state="normal", fg_color="#444444"))
+                            self.after(0, lambda: self.debug_btn.configure(state="normal", fg_color="#444444"))
+                            self.after(0, lambda: self.step_btn.configure(state="disabled", fg_color="#444444"))
+                            self.after(0, lambda: self.editor_panel.clear_indicators())
 
             except Exception as e:
                 self.after(0, lambda e_msg=str(e): self.output_panel.show_error("System Error", [e_msg]))
 
         self.execution_thread = threading.Thread(target=execution_task, daemon=True)
         self.execution_thread.start()
+
+    def debug_quantel_code(self):
+        self.run_quantel_code(debug_mode=True)
+
+    def step_program(self):
+        if self.interpreter_instance:
+            self.interpreter_instance.step_event.set()
 
     # -------------------------------------------------------------------------
     # UI HELPERS (Menus, Files, Toggles)

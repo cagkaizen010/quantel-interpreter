@@ -1,5 +1,6 @@
 import numpy as np
 import sys
+import threading
 from engine.heap import QuantelHeap
 
 
@@ -33,6 +34,11 @@ class QuantelInterpreter:
         self.MAX_STEPS = 10000
         self.step_callback = step_callback
 
+        # 3. Debugging / Stepping State
+        self.step_mode = False
+        self.step_event = threading.Event()
+        self.current_node = None
+
     def interpret(self, tree):
         if not tree:
             return
@@ -46,14 +52,30 @@ class QuantelInterpreter:
         if node is None:
             return None
 
+        # Track the node for the GUI (even if not stepping)
+        self.current_node = node
+
         # 1. Safety Break for Infinite Loops
         self.execution_steps += 1
         if self.execution_steps > self.MAX_STEPS:
             raise Exception(f"Interpreter Safety Break: Maximum execution steps ({self.MAX_STEPS}) exceeded.")
 
-        # 2. Trigger UI update periodically if a callback is provided
-        if self.step_callback and self.execution_steps % 50 == 0:
-            self.step_callback(self)
+        # 2. Trigger UI update and handle Stepping
+        if self.step_callback:
+            # Check if this is a "Top-Level" Statement that we want to step on
+            # (We don't want to pause for every literal or sub-expression)
+            is_stmt = node.__class__.__name__ in [
+                'VarDecl', 'ConstDecl', 'Assignment', 'IfStmt', 'WhileStmt', 
+                'ForStmt', 'FuncDecl', 'Return', 'Break', 'Continue', 
+                'Probe', 'InputStmt', 'ExprStmt', 'FreeStmt', 'ShowHeap',
+                'MallocExpr', 'RecordDecl', 'Import'
+            ]
+            
+            if is_stmt:
+                self.step_callback(self)
+                if self.step_mode:
+                    self.step_event.wait()  # Block until GUI signals
+                    self.step_event.clear()
 
         if isinstance(node, (int, float, str, bool, np.number)):
             return node
@@ -138,9 +160,6 @@ class QuantelInterpreter:
         # Store both dtype and shape info
         types[node.name] = (node.dtype, node.shape)
 
-        # Trigger UI update
-        if self.step_callback:
-            self.step_callback(self)
         return val
 
     def visit_ConstDecl(self, node):
@@ -153,9 +172,6 @@ class QuantelInterpreter:
         env[node.name] = val
         types[node.name] = (node.dtype, node.shape)
 
-        # Trigger UI update
-        if self.step_callback:
-            self.step_callback(self)
         return val
 
     def visit_InputStmt(self, node):
@@ -183,10 +199,6 @@ class QuantelInterpreter:
         
         env = self.local_env if self.local_env is not None else self.global_env
         env[node.name] = val
-
-        # Trigger UI update
-        if self.step_callback:
-            self.step_callback(self)
         return val
 
     def visit_RecordDecl(self, node):
@@ -407,8 +419,8 @@ class QuantelInterpreter:
                     env[target_name] = current / val
 
             # Trigger UI update
-            if self.step_callback:
-                self.step_callback(self)
+            # (Handled by visit)
+            pass
         return val
 
     # ==========================================
@@ -483,22 +495,13 @@ class QuantelInterpreter:
 
     def visit_MallocExpr(self, node):
         val = self.visit(node.value)
-        addr = self.heap.malloc(val)  # Returns address integer
-        
-        # Trigger immediate UI update for heap allocation
-        if self.step_callback:
-            self.step_callback(self)
-        return addr
+        return self.heap.malloc(val)  # Returns address integer
 
     def visit_FreeStmt(self, node):
         # Get the address stored in the variable name
         env = self.local_env if self.local_env is not None else self.global_env
         address = env.get(node.name)
         self.heap.free(address)
-
-        # Trigger immediate UI update for heap free
-        if self.step_callback:
-            self.step_callback(self)
 
     def visit_ShowHeap(self, node):
         print(self.heap)  # Uses the __repr__ we wrote earlier to show Gaps
