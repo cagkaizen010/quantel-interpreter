@@ -38,7 +38,7 @@ class QuantelParser(Parser):
             self.prev_token = tok
 
     # ==========================================
-    #       PRO-MODE ERROR REPORTING
+    #       ERROR REPORTING
     # ==========================================
     def error(self, p):
         if not p:

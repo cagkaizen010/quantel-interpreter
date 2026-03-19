@@ -1,6 +1,5 @@
 // ========================================================================
 //  QUANTEL SYSTEM INTEGRITY TEST
-//  Validation: Fixed for strict (DTYPE + SHAPE) requirement
 // ========================================================================
 
 import math;

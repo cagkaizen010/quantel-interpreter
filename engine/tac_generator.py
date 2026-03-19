@@ -42,7 +42,7 @@ class TACGenerator:
     def visit_FuncDecl(self, node):
         # Crucial: This allows the generator to enter the 'main' function
         self.instructions.append(f"FUNC {node.name}:")
-        # Check if your AST uses node.body or node.block
+        # Check if AST uses node.body or node.block
         body = getattr(node, 'body', getattr(node, 'block', None))
         self.visit(body)
         self.instructions.append(f"ENDFUNC")

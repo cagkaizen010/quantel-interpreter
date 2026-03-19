@@ -29,13 +29,12 @@ class QuantelInterpreter:
             return self.visit(tree)
         except Exception as e:
             print(f"\n--- Runtime Error ---\n{e}")
-            raise e # debug Python trace
+            raise e
 
     def visit(self, node):
         if node is None:
             return None
 
-        # Handle raw primitives (int, float, str) inside the AST
         if isinstance(node, (int, float, str, bool, np.number)):
             return node
 

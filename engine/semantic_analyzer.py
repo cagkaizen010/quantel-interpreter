@@ -162,14 +162,14 @@ class SemanticAnalyzer:
         if t_type != v_type and "unknown" not in [t_type, v_type]:
             self._report_error(node, "Assignment mismatch", f"Cannot assign {v_type} to {t_type}.")
 
-        # [NEW] ADDED: Shape Mismatch Check
+        # Shape Mismatch Check
         if t_shape != v_shape and t_shape is not None and v_shape is not None:
             self._report_error(node, "Dimension mismatch",
                                f"Target expects shape {t_shape}, but value has shape {v_shape}.")
 
         self.visit(node.value)
 
-    # [NEW] ADDED: Explicit BinOp Visitor for Mathematical Logic
+    # Explicit BinOp Visitor for Mathematical Logic
     def visit_BinOp(self, node):
         l_shape = self.get_shape(node.left)
         r_shape = self.get_shape(node.right)
