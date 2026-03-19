@@ -265,14 +265,16 @@ class QuantelInterpreter:
         if not func_node:
             raise Exception(f"Function '{node.name}' not defined.")
 
+        # Evaluate arguments in the CALLER'S scope before switching environments
+        arg_values = [self.visit(a) for a in node.args]
+
         prev_env = self.local_env
         prev_types = self.local_types
         self.local_env = {}
         self.local_types = {}
 
-        for param_node, arg_expr in zip(func_node.params, node.args):
-            arg_value = self.visit(arg_expr)
-            self.local_env[param_node.name] = arg_value
+        for param_node, arg_val in zip(func_node.params, arg_values):
+            self.local_env[param_node.name] = arg_val
             self.local_types[param_node.name] = param_node.dtype
 
         result = None
