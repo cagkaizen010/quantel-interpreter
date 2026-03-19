@@ -61,9 +61,9 @@ probe(total_activation);
 int32 scalar safe_mode = 1;
 while (safe_mode != 0) {
     if (total_activation > 100.0) {
-        break; 
+        break;
     }
-    safe_mode = 0; 
+    safe_mode = 0;
 }
 
 // [TEST 10] Pointers

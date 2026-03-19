@@ -1,6 +1,5 @@
 import numpy as np
 import sys
-import engine.ast as ast
 
 
 # --- Custom Exceptions for Control Flow ---
@@ -81,15 +80,6 @@ class QuantelInterpreter:
         val = None
         if hasattr(node, 'value') and node.value is not None:
             val = self.visit(node.value)
-        elif node.dtype not in ['auto', 'int32', 'float32', 'float64', 'bool', 'string']:
-            # Record instantiation
-            env = self.local_env if self.local_env is not None else self.global_env
-            rec_def = env.get(node.dtype)
-            if rec_def is None and self.local_env is not None:
-                rec_def = self.global_env.get(node.dtype)
-            
-            if rec_def and isinstance(rec_def, dict) and rec_def.get('type') == 'RECORD_DEF':
-                val = {field.name: None for field in rec_def['fields']}
 
         env = self.local_env if self.local_env is not None else self.global_env
         env[node.name] = val
@@ -97,20 +87,6 @@ class QuantelInterpreter:
 
     def visit_ConstDecl(self, node):
         val = self.visit(node.value)
-        env = self.local_env if self.local_env is not None else self.global_env
-        env[node.name] = val
-        return val
-
-    def visit_InputStmt(self, node):
-        prompt = node.prompt if node.prompt else f"Enter value for {node.name}: "
-        val = input(prompt)
-        # Try to convert to number if possible
-        try:
-            if '.' in val: val = float(val)
-            else: val = int(val)
-        except ValueError:
-            pass
-        
         env = self.local_env if self.local_env is not None else self.global_env
         env[node.name] = val
         return val
@@ -214,6 +190,16 @@ class QuantelInterpreter:
             print(" ".join(args))
             return None
 
+        if node.name == 'input':
+            prompt = str(self.visit(node.args[0])) if node.args else ""
+            val = input(prompt)
+            # Numeric conversion logic
+            try:
+                if '.' in val: return float(val)
+                return int(val)
+            except ValueError:
+                return val
+
         func_node = self.global_env.get(node.name)
         if not func_node:
             raise Exception(f"Function '{node.name}' not defined.")
@@ -240,22 +226,9 @@ class QuantelInterpreter:
     # ==========================================
 
     def visit_BinOp(self, node):
-        op = node.op
-
-        # Short-circuiting
-        if op == '&&':
-            left = self.visit(node.left)
-            if not left: return False
-            right = self.visit(node.right)
-            return left and right
-        if op == '||':
-            left = self.visit(node.left)
-            if left: return True
-            right = self.visit(node.right)
-            return left or right
-
         left = self.visit(node.left)
         right = self.visit(node.right)
+        op = node.op
 
         try:
             if op == '+': return left + right
@@ -271,6 +244,8 @@ class QuantelInterpreter:
             if op == '>': return left > right
             if op == '<=': return left <= right
             if op == '>=': return left >= right
+            if op == '&&': return left and right
+            if op == '||': return left or right
         except Exception as e:
             lineno = getattr(node, 'lineno', '?')
             raise Exception(f"Math Error at Line {lineno} ({op}): {e}")
@@ -289,50 +264,27 @@ class QuantelInterpreter:
 
     def visit_Assignment(self, node):
         val = self.visit(node.value)
-        
-        # Helper to get the actual container and key for assignment
-        def get_target_info(target_node):
-            if isinstance(target_node, ast.Identifier):
-                env = self.local_env if self.local_env is not None else self.global_env
-                if target_node.name in env: return env, target_node.name
-                if self.local_env is not None and target_node.name in self.global_env:
-                    return self.global_env, target_node.name
-                return env, target_node.name
-            elif isinstance(target_node, ast.ArrayAccess):
-                container = self.visit(target_node.name)
-                if isinstance(target_node.index, list):
-                    index = tuple([self.visit(x) for x in target_node.index])
-                else:
-                    index = self.visit(target_node.index)
-                return container, index
-            elif isinstance(target_node, ast.RecordAccess):
-                container = self.visit(target_node.record)
-                return container, target_node.field
+        env = self.local_env if self.local_env is not None else self.global_env
+
+        target_name = node.target.name if hasattr(node.target, 'name') else None
+
+        if target_name:
+            if node.op == '=':
+                env[target_name] = val
             else:
-                raise Exception(f"Unsupported assignment target: {type(target_node)}")
+                current = env.get(target_name)
+                if current is None:
+                    raise Exception(f"Variable '{target_name}' not defined.")
 
-        container, key = get_target_info(node.target)
-
-        if node.op == '=':
-            container[key] = val
-        else:
-            current = container[key]
-            if current is None:
-                raise Exception(f"Variable or field at '{key}' is not initialized.")
-
-            if node.op == '+=': container[key] = current + val
-            elif node.op == '-=': container[key] = current - val
-            elif node.op == '*=': container[key] = current * val
-            elif node.op == '/=': container[key] = current / val
-            elif node.op == '@=': container[key] = np.matmul(current, val)
-            
+                if node.op == '+=':
+                    env[target_name] = current + val
+                elif node.op == '-=':
+                    env[target_name] = current - val
+                elif node.op == '*=':
+                    env[target_name] = current * val
+                elif node.op == '/=':
+                    env[target_name] = current / val
         return val
-
-    def visit_RecordAccess(self, node):
-        record = self.visit(node.record)
-        if not isinstance(record, dict):
-             raise Exception(f"Runtime Error: Expected record, got {type(record)}")
-        return record.get(node.field)
 
     # ==========================================
     #           Data Types & Slicing

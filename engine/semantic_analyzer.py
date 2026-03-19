@@ -17,6 +17,7 @@ class SemanticAnalyzer:
         self.current_function = None
         # Predefine built-ins
         self.define(None, 'print', 'unknown', 'function', params_count=-1)
+        self.define(None, 'input', 'string', 'function', params_count=-1)
 
     def _report_error(self, node, message, hint):
         lineno = getattr(node, 'lineno', '??')
@@ -116,15 +117,6 @@ class SemanticAnalyzer:
             v_shape = self.get_shape(node.value)
         self.define(node, node.name, v_type, 'variable', v_shape, initialized=True, is_const=True)
         self.visit(node.value)
-
-    def visit_InputStmt(self, node):
-        symbol = self.lookup(node.name)
-        if not symbol:
-            self.define(node, node.name, 'string', 'variable', initialized=True)
-        else:
-            if symbol.is_const:
-                self._report_error(node, f"Cannot input into constant '{node.name}'", "Constants are immutable.")
-            symbol.is_initialized = True
 
     def visit_FuncDecl(self, node):
         p_count = len(node.params) if node.params else 0
@@ -232,6 +224,9 @@ class SemanticAnalyzer:
         self.visit(node.right)
 
     def visit_IfStmt(self, node):
+        shape = self.get_shape(node.condition)
+        if shape != []:
+            self._report_error(node, "Condition must be a scalar", f"Got shape {shape}")
         self.visit(node.condition)
         self.enter_scope()
         self.visit(node.then_block)
@@ -242,6 +237,9 @@ class SemanticAnalyzer:
             self.exit_scope()
 
     def visit_WhileStmt(self, node):
+        shape = self.get_shape(node.condition)
+        if shape != []:
+            self._report_error(node, "Condition must be a scalar", f"Got shape {shape}")
         self.visit(node.condition)
         self.enter_scope()
         self.visit(node.body)
@@ -251,6 +249,9 @@ class SemanticAnalyzer:
         self.enter_scope()
         self.visit(node.body)
         self.exit_scope()
+        shape = self.get_shape(node.condition)
+        if shape != []:
+            self._report_error(node, "Condition must be a scalar", f"Got shape {shape}")
         self.visit(node.condition)
 
     def visit_ForStmt(self, node):
