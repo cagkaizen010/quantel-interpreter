@@ -1,0 +1,13 @@
+// 1. Scalar to Matrix (Should Fail)
+float32 matrix<2,2> m = 5.0;
+
+// 2. Matrix to Scalar (Should Fail)
+float32 scalar s = m;
+
+// 3. Mismatched Matrix Dimensions (Should Fail)
+float32 matrix<3,3> m2 = m;
+
+// 4. Correct Assignment (Should Pass)
+float32 matrix<2,2> m3 = m;
+float32 scalar s2 = 1.2;
+print("Finished testing shapes.");

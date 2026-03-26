@@ -1,0 +1,14 @@
+int32 scalar count = 1;
+int32 scalar limit = 0;
+
+// input(limit, "How many times? ");
+limit = 3; // Simulating input update that the optimizer should NOT override if it sees it
+
+print("--- Starting Loop ---");
+
+while (count <= limit) {
+    print("Loop iteration:", count);
+    count += 1;
+}
+
+print("--- Loop Finished ---");

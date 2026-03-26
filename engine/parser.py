@@ -133,11 +133,17 @@ class QuantelParser(Parser):
     def statements(self, p):
         return [p.statement]
 
-    @_('declaration', 'assignment', 'control_flow', 'probe_stmt',
+    @_('declaration', 'assignment', 'control_flow', 'probe_stmt', 'input_stmt',
        'func_decl', 'record_decl', 'block', 'return_stmt',
        'break_stmt', 'continue_stmt', 'expr_stmt', 'free_stmt', 'show_heap_stmt', 'error_stmt')
     def statement(self, p):
         return p[0]
+
+    @_('INPUT LPAREN target RPAREN SEMICOLON',
+       'INPUT LPAREN target COMMA STRING RPAREN SEMICOLON')
+    def input_stmt(self, p):
+        prompt = p.STRING if hasattr(p, 'STRING') else None
+        return ast.InputStmt(p.target, prompt, lineno=p.lineno)
 
     @_('MALLOC LPAREN expr RPAREN')
     def expr(self, p):

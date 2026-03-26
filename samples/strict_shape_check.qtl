@@ -1,0 +1,30 @@
+// 1. Variable Initialization Mismatch
+float32 matrix<2,2> m1 = 1.0; 
+
+// 2. Assignment Mismatch
+float32 scalar s1 = 0.0;
+s1 = m1; 
+
+// 3. Binary Operation Mismatch
+float32 matrix<3,3> m2 = [[1,2,3],[4,5,6],[7,8,9]];
+// matrix<2,2> + matrix<3,3> should fail
+auto m3 = m1 + m2; 
+
+// 4. Function Argument Mismatch
+func process(float32 matrix<2,2> data) -> float32 scalar {
+    return 1.0;
+}
+
+float32 scalar res = process(m2); // Should fail: m2 is 3x3, expects 2x2
+
+// 5. Function Return Mismatch
+func get_matrix() -> float32 matrix<2,2> {
+    return 1.0; // Should fail: returns scalar, expects 2x2
+}
+
+// 6. Matmul Inner Dimension Mismatch
+float32 matrix<2,3> a = [[1,2,3],[4,5,6]];
+float32 matrix<2,2> b = [[1,2],[3,4]];
+auto c = a @ b; // Should fail: (2,3) @ (2,2) inner dims 3 and 2 mismatch
+
+print("Testing complete.");

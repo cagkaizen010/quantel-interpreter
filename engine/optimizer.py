@@ -71,6 +71,13 @@ class QuantelOptimizer:
                     del self.constants[target_name]
         return node
 
+    def visit_InputStmt(self, node):
+        # User input makes the variable non-constant/unknown
+        target_name = getattr(node.target, 'name', None)
+        if target_name and target_name in self.constants:
+            del self.constants[target_name]
+        return node
+
     def visit_InputExpr(self, node):
         return node
 
@@ -217,6 +224,11 @@ class QuantelOptimizer:
 
         # Standard Assignment (x = 5) or Augmented Assignment (x += 1)
         elif node.__class__.__name__ in ['Assignment', 'AugmentedAssignment']:
+            if hasattr(node.target, 'name'):
+                modified.add(node.target.name)
+
+        # Input Statement (input(x, ...))
+        elif node.__class__.__name__ == 'InputStmt':
             if hasattr(node.target, 'name'):
                 modified.add(node.target.name)
 

@@ -1,5 +1,5 @@
 class Symbol:
-    def __init__(self, name, symbol_type, category, shape=None, is_initialized=False, params_count=None, is_const=False):
+    def __init__(self, name, symbol_type, category, shape=None, is_initialized=False, params_count=None, is_const=False, param_shapes=None):
         self.name = name
         self.symbol_type = symbol_type
         self.category = category  # 'variable', 'function', 'record'
@@ -7,6 +7,7 @@ class Symbol:
         self.is_initialized = is_initialized
         self.params_count = params_count
         self.is_const = is_const
+        self.param_shapes = param_shapes # For functions: list of shapes [ [], [2,2], ... ]
 
 
 class SemanticAnalyzer:
@@ -17,7 +18,7 @@ class SemanticAnalyzer:
         self.current_function = None
         # Predefine built-ins
         self.define(None, 'print', 'unknown', 'function', params_count=-1)
-        self.define(None, 'load_csv', 'matrix', 'function', params_count=1)
+        self.define(None, 'load_csv', 'matrix', 'function', params_count=1, param_shapes=[[]])
 
     def _report_error(self, node, message, hint):
         lineno = getattr(node, 'lineno', '??')
@@ -32,12 +33,12 @@ class SemanticAnalyzer:
     def exit_scope(self):
         if len(self.scopes) > 1: self.scopes.pop()
 
-    def define(self, node, name, symbol_type, category, shape=None, initialized=False, params_count=None, is_const=False):
+    def define(self, node, name, symbol_type, category, shape=None, initialized=False, params_count=None, is_const=False, param_shapes=None):
         if name in self.scopes[-1]:
             self._report_error(node, f"Redeclaration of '{name}'", f"'{name}' is already defined in this block.")
             return None
 
-        symbol = Symbol(name, symbol_type, category, shape, initialized, params_count, is_const)
+        symbol = Symbol(name, symbol_type, category, shape, initialized, params_count, is_const, param_shapes)
         self.scopes[-1][name] = symbol
         # Use symbol_type as key for records to allow type-based lookup in visit_RecordAccess
         history_key = name if category != 'record' else name
@@ -126,6 +127,10 @@ class SemanticAnalyzer:
         self.visit(node.prompt)
         return 'unknown' # Type will be inferred from target
 
+    def visit_InputStmt(self, node):
+        self.visit(node.target)
+        if node.prompt: self.visit(node.prompt)
+
     def visit_VarDecl(self, node):
         v_shape = getattr(node.shape, 'dims', []) if node.shape else []
         v_type = node.dtype
@@ -133,6 +138,19 @@ class SemanticAnalyzer:
         if v_type == 'auto' and node.value:
             v_type = self.get_type(node.value)
             v_shape = self.get_shape(node.value)
+        elif node.value:
+            # Type Check
+            val_type = self.get_type(node.value)
+            if v_type != val_type and "unknown" not in [v_type, val_type]:
+                # Relaxed check for numeric types
+                is_numeric = lambda t: t in ['int32', 'int64', 'float32', 'float64', 'int', 'float']
+                if not (is_numeric(v_type) and is_numeric(val_type)):
+                    self._report_error(node, "Initialization mismatch", f"Cannot initialize {v_type} with {val_type}.")
+
+            # Shape Check
+            val_shape = self.get_shape(node.value)
+            if v_shape != val_shape and v_shape is not None and val_shape is not None:
+                self._report_error(node, "Dimension mismatch", f"Variable expects shape {v_shape}, but value has {val_shape}.")
 
         self.define(node, node.name, v_type, 'variable', v_shape, node.value is not None)
         self.visit(node.value)
@@ -143,18 +161,34 @@ class SemanticAnalyzer:
         if v_type == 'auto' and node.value:
             v_type = self.get_type(node.value)
             v_shape = self.get_shape(node.value)
+        elif node.value:
+            # Type Check
+            val_type = self.get_type(node.value)
+            if v_type != val_type and "unknown" not in [v_type, val_type]:
+                is_numeric = lambda t: t in ['int32', 'int64', 'float32', 'float64', 'int', 'float']
+                if not (is_numeric(v_type) and is_numeric(val_type)):
+                    self._report_error(node, "Initialization mismatch", f"Cannot initialize {v_type} with {val_type}.")
+
+            # Shape Check
+            val_shape = self.get_shape(node.value)
+            if v_shape != val_shape and v_shape is not None and val_shape is not None:
+                self._report_error(node, "Dimension mismatch", f"Constant expects shape {v_shape}, but value has {val_shape}.")
+
         self.define(node, node.name, v_type, 'variable', v_shape, initialized=True, is_const=True)
         self.visit(node.value)
 
     def visit_FuncDecl(self, node):
         p_count = len(node.params) if node.params else 0
-        self.define(node, node.name, node.ret_type, 'function', initialized=True, params_count=p_count)
+        p_shapes = [getattr(p.shape, 'dims', []) if p.shape else [] for p in node.params] if node.params else []
+        ret_shape = getattr(node.ret_shape, 'dims', []) if node.ret_shape else []
+        
+        self.define(node, node.name, node.ret_type, 'function', shape=ret_shape, initialized=True, params_count=p_count, param_shapes=p_shapes)
 
         self.current_function = node
         self.enter_scope()
         if node.params:
             for p in node.params:
-                p_shape = getattr(p.shape_type, 'dims', []) if hasattr(p, 'shape_type') else []
+                p_shape = getattr(p.shape, 'dims', []) if p.shape else []
                 self.define(p, p.name, p.dtype, 'variable', shape=p_shape, initialized=True)
         self.visit(node.body)
         self.exit_scope()
@@ -169,8 +203,16 @@ class SemanticAnalyzer:
                 self._report_error(node, f"'{node.name}' is not a function", f"It is a {symbol.category}.")
 
             args_given = len(node.args) if node.args else 0
-            if symbol.params_count != -1 and args_given != symbol.params_count:
-                self._report_error(node, "Argument mismatch", f"Expected {symbol.params_count}, got {args_given}.")
+            if symbol.params_count != -1:
+                if args_given != symbol.params_count:
+                    self._report_error(node, "Argument mismatch", f"Expected {symbol.params_count}, got {args_given}.")
+                elif symbol.param_shapes:
+                    for i, arg in enumerate(node.args):
+                        expected_s = symbol.param_shapes[i]
+                        actual_s = self.get_shape(arg)
+                        if expected_s != actual_s:
+                            self._report_error(node, "Argument dimension mismatch", 
+                                               f"Arg {i+1} of '{node.name}' expects {expected_s}, got {actual_s}.")
         self.visit(node.args)
 
     def visit_UnaryOp(self, node):
@@ -291,10 +333,15 @@ class SemanticAnalyzer:
 
     def visit_Return(self, node):
         if not self.current_function: return
-        actual = self.get_type(node.value)
-        expected = self.current_function.ret_type
-        if actual != expected:
-            self._report_error(node, "Return mismatch", f"Expected {expected}, got {actual}.")
+        actual_t = self.get_type(node.value)
+        expected_t = self.current_function.ret_type
+        if actual_t != expected_t:
+            self._report_error(node, "Return type mismatch", f"Expected {expected_t}, got {actual_t}.")
+
+        actual_s = self.get_shape(node.value)
+        expected_s = getattr(self.current_function.ret_shape, 'dims', []) if self.current_function.ret_shape else []
+        if actual_s != expected_s:
+            self._report_error(node, "Return dimension mismatch", f"Expected shape {expected_s}, got {actual_s}.")
 
     # ==========================================
     #           TYPE INFERENCE SYSTEM

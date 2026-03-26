@@ -32,3 +32,21 @@ while (count <= limit) {
 }
 
 print("--- Loop Finished ---");
+
+// Counter example using a REPEAT-UNTIL loop
+int32 scalar count2 = 1;
+int32 scalar limit2 = 0;
+
+// Ask the user for a limit
+input(limit2, "How many times should I loop? ");
+
+print("--- Starting Repeat-Until Loop ---");
+
+repeat {
+    print("Loop iteration:", count2);
+
+    // Increment the counter
+    count2 += 1;
+} until (count2 > limit2); // It will stop as soon as count is greater than limit
+
+print("--- Loop Finished ---");

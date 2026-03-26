@@ -143,6 +143,12 @@ class InputExpr(Node):
         super().__init__(lineno)
         self.prompt = prompt
 
+class InputStmt(Node):
+    def __init__(self, target, prompt=None, lineno=0):
+        super().__init__(lineno)
+        self.target = target
+        self.prompt = prompt
+
 class ExprStmt(Node):
     def __init__(self, expr, lineno=0):
         super().__init__(lineno)
@@ -180,9 +186,9 @@ class Identifier(Node):
         self.name = name
 
 class ArrayAccess(Node):
-    def __init__(self, name, index, lineno=0):
+    def __init__(self, target, index, lineno=0):
         super().__init__(lineno)
-        self.name = name
+        self.target = target
         self.index = index # Can be Expr or Slice
 
 class Slice(Node):

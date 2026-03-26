@@ -148,9 +148,11 @@ class OutputPanel(ctk.CTkFrame):
 
     def update_symbols_tab(self, analyzer):
         rows = []
+        built_ins = {'print', 'load_csv'}
         if hasattr(analyzer, 'history'):
             for name, sym in analyzer.history.items():
-                rows.append([name, getattr(sym, 'symbol_type', 'unknown'), getattr(sym, 'category', 'var')])
+                if name not in built_ins:
+                    rows.append([name, getattr(sym, 'symbol_type', 'unknown'), getattr(sym, 'category', 'var')])
         self.write_table("Symbols", rows, headers=["NAME", "TYPE", "CATEGORY"])
 
     def clear_all(self):
@@ -165,8 +167,4 @@ class OutputPanel(ctk.CTkFrame):
 
     def get_input(self):
         """Blocks until input is available in the queue."""
-        # Clear any stale input first
-        while not self.input_queue.empty():
-            try: self.input_queue.get_nowait()
-            except: pass
         return self.input_queue.get()

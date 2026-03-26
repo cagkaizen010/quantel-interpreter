@@ -55,13 +55,45 @@ class TACGenerator:
         if child:
             self.visit(child)
 
+    def visit_InputStmt(self, node):
+        target = getattr(node.target, 'name', node.target if isinstance(node.target, str) else "unknown")
+        prompt = f'"{node.prompt}"' if node.prompt else ""
+        self.instructions.append(f"{target} = INPUT({prompt})")
+
     def visit_VarDecl(self, node):
         if node.value:
             val = self.visit(node.value)
             self.instructions.append(f"{node.name} = {val}")
         else:
-            type_name = getattr(node, 'var_type', 'auto')
-            self.instructions.append(f"ALLOC {node.name} ({type_name})")
+            self.instructions.append(f"ALLOC {node.name} ({node.dtype})")
+
+    def visit_WhileStmt(self, node):
+        label_id = self.temp_counter
+        self.temp_counter += 1
+        
+        start_label = f"L_WHILE_START_{label_id}"
+        end_label = f"L_WHILE_END_{label_id}"
+        
+        self.instructions.append(f"{start_label}:")
+        condition = self.visit(node.condition)
+        self.instructions.append(f"IF_FALSE {condition} GOTO {end_label}")
+        
+        self.visit(node.body)
+        
+        self.instructions.append(f"GOTO {start_label}")
+        self.instructions.append(f"{end_label}:")
+
+    def visit_RepeatUntilStmt(self, node):
+        label_id = self.temp_counter
+        self.temp_counter += 1
+        
+        start_label = f"L_REPEAT_START_{label_id}"
+        
+        self.instructions.append(f"{start_label}:")
+        self.visit(node.body)
+        
+        condition = self.visit(node.condition)
+        self.instructions.append(f"IF_FALSE {condition} GOTO {start_label}")
 
     def visit_Assignment(self, node):
         target = getattr(node.target, 'name', node.target if isinstance(node.target, str) else "unknown")

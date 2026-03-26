@@ -83,7 +83,7 @@ class QuantelInterpreter:
             is_stmt = node.__class__.__name__ in [
                 'VarDecl', 'ConstDecl', 'Assignment', 'IfStmt', 'WhileStmt', 
                 'ForStmt', 'FuncDecl', 'Return', 'Break', 'Continue', 
-                'Probe', 'InputExpr', 'ExprStmt', 'FreeStmt', 'ShowHeap',
+                'Probe', 'InputExpr', 'InputStmt', 'ExprStmt', 'FreeStmt', 'ShowHeap',
                 'MallocExpr', 'RecordDecl', 'Import'
             ]
             if is_stmt:
@@ -172,12 +172,42 @@ class QuantelInterpreter:
         return val
 
     def visit_InputExpr(self, node, expected_dtype='string'):
-        raw_val = input(node.prompt if node.prompt else "Enter value: ")
+        prompt = node.prompt if node.prompt else "Enter value: "
+        sys.stdout.write(prompt)
+        sys.stdout.flush()
+        raw_val = sys.stdin.readline().strip()
         try:
             if expected_dtype in ['int32', 'int']: return int(raw_val)
             if expected_dtype in ['float32', 'float64', 'float']: return float(raw_val)
             return raw_val
-        except: return raw_val
+        except ValueError:
+            raise Exception(f"Input Error: Expected {expected_dtype}, got '{raw_val}'")
+
+    def visit_InputStmt(self, node):
+        target_name = node.target.name if hasattr(node.target, 'name') else str(node.target)
+        env = None
+        dtype = 'string'
+
+        # Search local environments (inner to outer)
+        for i in range(len(self.local_envs) - 1, -1, -1):
+            if target_name in self.local_envs[i]:
+                env = self.local_envs[i]
+                type_info = self.local_types_stack[i].get(target_name)
+                dtype = type_info[0] if isinstance(type_info, (tuple, list)) else type_info
+                break
+
+        # Fallback to global environment
+        if env is None:
+            if target_name in self.global_env:
+                env = self.global_env
+                type_info = self.global_types.get(target_name)
+                dtype = type_info[0] if isinstance(type_info, (tuple, list)) else type_info
+            else:
+                raise Exception(f"Runtime Error: Variable '{target_name}' not defined for input.")
+
+        val = self.visit_InputExpr(node, dtype)
+        env[target_name] = val
+        return val
 
     def visit_RecordDecl(self, node):
         env = self.get_current_env()
@@ -212,10 +242,16 @@ class QuantelInterpreter:
 
     def visit_RepeatUntilStmt(self, node):
         while True:
-            try: self.visit(node.body)
-            except BreakException: break
-            except ContinueException: pass
-            if self.visit(node.condition): break
+            try:
+                self.visit(node.body)
+            except BreakException:
+                break
+            except ContinueException:
+                pass
+            
+            # Condition is checked after the body executes
+            if self.visit(node.condition):
+                break
         return None
 
     def visit_ForStmt(self, node):
@@ -284,27 +320,54 @@ class QuantelInterpreter:
         return val
 
     def visit_Assignment(self, node):
-        env, types = self.get_current_env(), self.get_current_types()
         if node.target.__class__.__name__ == 'RecordAccess':
             record = self.visit(node.target.record)
             val = self.visit(node.value)
             if isinstance(record, dict): record[node.target.field] = val
             return val
         
+        if node.target.__class__.__name__ == 'ArrayAccess':
+            target_arr = self.visit(node.target.target)
+            idx = self.visit(node.target.index)
+            val = self.visit(node.value)
+            target_arr[idx] = val
+            return val
+
         target_name = node.target.name if hasattr(node.target, 'name') else None
         if target_name:
-            type_info = types.get(target_name, ('unknown', None, False))
-            dtype = type_info[0] if isinstance(type_info, tuple) else type_info
+            env, dtype = None, 'unknown'
+            # Search local environments (inner to outer)
+            for i in range(len(self.local_envs) - 1, -1, -1):
+                if target_name in self.local_envs[i]:
+                    env = self.local_envs[i]
+                    type_info = self.local_types_stack[i].get(target_name)
+                    dtype = type_info[0] if isinstance(type_info, (tuple, list)) else type_info
+                    break
+            
+            # Fallback to global environment
+            if env is None:
+                if target_name in self.global_env:
+                    env = self.global_env
+                    type_info = self.global_types.get(target_name)
+                    dtype = type_info[0] if isinstance(type_info, (tuple, list)) else type_info
+                else:
+                    raise Exception(f"Runtime Error: Variable '{target_name}' not defined for assignment.")
+
             val = self.visit_InputExpr(node.value, dtype) if node.value.__class__.__name__ == 'InputExpr' else self.visit(node.value)
-            if node.op == '=': env[target_name] = val
+            
+            if node.op in ['=', 'ASSIGN']:
+                env[target_name] = val
             else:
-                curr = env.get(target_name)
-                if node.op == '+=': env[target_name] = curr + val
-                elif node.op == '-=': env[target_name] = curr - val
-                elif node.op == '*=': env[target_name] = curr * val
-                elif node.op == '/=': env[target_name] = curr / val
-        else: val = self.visit(node.value)
-        return val
+                curr = env[target_name]
+                if node.op in ['+=', 'PLUS_ASSIGN']: env[target_name] = curr + val
+                elif node.op in ['-=', 'MINUS_ASSIGN']: env[target_name] = curr - val
+                elif node.op in ['*=', 'TIMES_ASSIGN']: env[target_name] = curr * val
+                elif node.op in ['/=', 'DIVIDE_ASSIGN']: env[target_name] = curr / val
+                elif node.op in ['@=', 'AT_ASSIGN']: env[target_name] = np.matmul(curr, val)
+                else: raise Exception(f"Runtime Error: Unsupported assignment operator '{node.op}'")
+            return val
+        else:
+            return self.visit(node.value)
 
     def visit_Literal(self, node): return node.value
     def visit_Identifier(self, node):
@@ -315,7 +378,7 @@ class QuantelInterpreter:
 
     def visit_ArrayLiteral(self, node): return np.array([self.visit(el) for el in node.elements])
     def visit_ArrayAccess(self, node):
-        target, idx = self.visit(node.name), self.visit(node.index)
+        target, idx = self.visit(node.target), self.visit(node.index)
         return target[idx]
 
     def visit_Slice(self, node):
