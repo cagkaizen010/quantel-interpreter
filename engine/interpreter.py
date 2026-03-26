@@ -308,6 +308,8 @@ class QuantelInterpreter:
         if op == '>': return l > r
         if op == '<=': return l <= r
         if op == '>=': return l >= r
+        if op == '&&': return bool(l and r)
+        if op == '||': return bool(l or r)
         return None
 
     def visit_CompareOp(self, node): return self.visit_BinOp(node)
