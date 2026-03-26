@@ -1,8 +1,37 @@
-// Optimization Test
-int32 scalar a = 10;
-int32 scalar b = 20;
-int32 scalar result = a + b * 2;
+// ========================================================================
+//  QUANTEL COMPREHENSIVE OPTIMIZATION TEST
+// ========================================================================
 
-for i in 0..3 {
-    probe(i);
+print("--- 1. Constant Folding & Propagation ---");
+// Optimizer should calculate this entire line at compile-time
+int32 scalar speed = (10 + 5) * 2 / 3; 
+int32 scalar time = 100;
+int32 scalar distance = speed * time; 
+// TAC should show 'distance = 1000' (or the pre-calculated value)
+probe(distance);
+
+print("--- 2. Dead Code Elimination (DCE) ---");
+bool scalar check = false;
+if (check) {
+    print("THIS SHOULD NOT PRINT AND SHOULD NOT BE IN TAC");
+    probe(9999);
+} else {
+    print("DCE Test: Correct branch preserved");
 }
+
+print("--- 3. Stress Test: Loop Unrolling ---");
+// This loop runs 40 times. 
+// Without optimization: The interpreter visits the 'for' node 40 times.
+// With optimization: The loop is removed and the body is repeated 40 times in TAC.
+int32 scalar counter = 0;
+for i in 0..40 {
+    counter += 1;
+}
+print("Final Counter (Expected 40):", counter);
+
+print("--- 4. Complex Pre-calculation ---");
+// Multiple steps of folding
+auto complex_math = (5 * 5) + (100 / 2) - (10 * 10 / 5);
+probe(complex_math);
+
+print("--- Optimization Test Complete ---");

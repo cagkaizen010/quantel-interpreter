@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import io
 import os
+import time
 import contextlib
 import re
 import sys
@@ -78,6 +79,13 @@ class QuantelIDE(ctk.CTk):
                                      command=self.run_quantel_code)
         self.run_btn.pack(side=tk.RIGHT, padx=5, pady=5)
         self.run_tooltip = CTkToolTip(self.run_btn, message="Run Program")
+
+        self.stop_btn = ctk.CTkButton(self.toolbar, text="■", width=30, height=24, 
+                                      text_color="white",
+                                      fg_color="#444444", hover_color="#dc3545",
+                                      state="disabled", command=self.stop_execution)
+        self.stop_btn.pack(side=tk.RIGHT, padx=5, pady=5)
+        self.stop_tooltip = CTkToolTip(self.stop_btn, message="Stop Execution")
 
         # Optimizer Toggle
         self.opt_var = tk.BooleanVar(value=True)
@@ -172,6 +180,7 @@ class QuantelIDE(ctk.CTk):
 
         self.run_btn.configure(state="disabled")
         self.debug_btn.configure(state="disabled")
+        self.stop_btn.configure(state="normal", fg_color="#dc3545")
         
         if debug_mode:
             self.debug_btn.configure(fg_color="#28a745")
@@ -185,6 +194,8 @@ class QuantelIDE(ctk.CTk):
         code = self.editor_panel.get_text()
 
         def execution_task():
+            start_time = time.perf_counter()
+            opt_duration = 0.0
             try:
                 lexer = QuantelLexer()
                 tokens = list(lexer.tokenize(code))
@@ -225,8 +236,10 @@ class QuantelIDE(ctk.CTk):
                 if ast_tree:
                     should_optimize = self.opt_var.get()
                     if QuantelOptimizer and should_optimize:
+                        opt_start = time.perf_counter()
                         optimizer = QuantelOptimizer()
                         ast_tree = optimizer.optimize(ast_tree)
+                        opt_duration = time.perf_counter() - opt_start
                     
                     self.after(0, lambda: self.output_panel.write("AST", render_ast_tree(ast_tree)))
                     self.after(0, lambda: self.tac_panel.generate_and_show(ast_tree))
@@ -263,7 +276,11 @@ class QuantelIDE(ctk.CTk):
                             sys.stdout = stream
                             sys.stdin = stream
                             self.interpreter_instance.interpret(ast_tree)
-                            self.after(0, lambda: self.output_panel.write("Output", "\n[Finished]", False))
+                            
+                            total_duration = time.perf_counter() - start_time
+                            time_msg = f"\n[Finished in {total_duration:.4f}s] (Opt: {opt_duration:.4f}s)"
+                            self.after(0, lambda: self.output_panel.write("Output", time_msg, False))
+                            
                             self.after(0, lambda: self.stack_panel.update_map(self.interpreter_instance))
                             self.after(0, lambda: self.heap_panel.update_map(self.interpreter_instance))
                         except Exception as e:
@@ -284,6 +301,15 @@ class QuantelIDE(ctk.CTk):
         self.execution_thread.start()
 
     def debug_quantel_code(self): self.run_quantel_code(debug_mode=True)
+    
+    def stop_execution(self):
+        """Forcefully stops the interpreter execution."""
+        if self.interpreter_instance:
+            self.interpreter_instance.kill_flag = True
+            # Unblock any waiting step events
+            self.interpreter_instance.step_event.set()
+            self.output_panel.write("Output", "\n[Process Terminated by User]\n", False, tag="red")
+
     def step_program(self):
         if self.interpreter_instance: self.interpreter_instance.step_event.set()
 

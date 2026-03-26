@@ -91,23 +91,30 @@ class TACViewerPanel(ctk.CTkFrame):
         lineno = getattr(node, 'lineno', None)
         if not lineno: return
 
-        # Get the name of the operation (e.g., 'Assignment', 'BinOp')
-        cls_name = node.__class__.__name__.upper()
-        
-        # We try to find a line in the text area that looks like this node
         self.text_area.tag_remove("debug", "1.0", "end")
         
         content = self.text_area.get("1.0", "end")
         lines = content.split('\n')
         
+        # Heuristic search: look for lines that logically match this node
+        cls_name = node.__class__.__name__
+        target_name = getattr(node, 'name', getattr(node, 'target', None))
+        if hasattr(target_name, 'name'): target_name = target_name.name # Handle Identifier nodes as targets
+
         for i, line in enumerate(lines):
-            # Very basic heuristic: if the line contains a keyword from the instruction
-            # Or if the RESULT column matches the target name
-            target_name = getattr(node, 'name', getattr(node, 'target', None))
-            if isinstance(target_name, str) and target_name in line:
+            line_upper = line.upper()
+            
+            # Match Logic
+            match = False
+            if cls_name == 'Probe' and 'PROBE' in line_upper: match = True
+            elif cls_name == 'FuncCall' and f"CALL {getattr(node, 'name', '')}" in line_upper: match = True
+            elif cls_name in ['VarDecl', 'Assignment'] and isinstance(target_name, str) and f" {target_name} " in f" {line} ": match = True
+            elif cls_name == 'WhileStmt' and 'IF' in line_upper and 'GOTO' in line_upper: match = True
+            elif cls_name == 'ForStmt' and ('FOR' in line_upper or 'IF' in line_upper): match = True
+            
+            if match:
                 start_index = f"{i+1}.0"
-                end_index = f"{i+1}.end"
-                self.text_area.tag_add("debug", start_index, end_index)
+                self.text_area.tag_add("debug", start_index, f"{i+1}.end")
                 self.text_area.tag_config("debug", background="#1e3a5f", foreground="#ffffff")
                 self.text_area.see(start_index)
                 break

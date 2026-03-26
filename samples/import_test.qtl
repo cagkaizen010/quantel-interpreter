@@ -1,0 +1,27 @@
+// Main Test for Import Functionality
+import math_utils;
+import data_structures;
+
+print("--- Testing Imported Functions ---");
+float32 scalar val = 5.0;
+float32 scalar sq = square(val);
+float32 scalar cb = cube(val);
+
+print("Square of 5:", sq);
+print("Cube of 5:", cb);
+
+print("--- Testing Imported Records ---");
+Point p;
+p.x = 10.5;
+p.y = 20.2;
+
+print("Point coords:", p.x, p.y);
+
+LayerConfig cfg;
+cfg.size = 128;
+cfg.active = true;
+
+print("Layer Size:", cfg.size);
+print("Layer Active:", cfg.active);
+
+print("--- Import Test Complete ---");

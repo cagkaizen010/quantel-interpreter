@@ -66,6 +66,30 @@ class SemanticAnalyzer:
         visitor = getattr(self, method_name, self.generic_visit)
         return visitor(node)
 
+    def visit_Program(self, node):
+        if hasattr(node, 'imports'):
+            for imp in node.imports: self.visit(imp)
+        self.visit(node.statements)
+
+    def visit_Import(self, node):
+        import os
+        from engine.lexer import QuantelLexer
+        from engine.parser import QuantelParser
+        
+        if node.name == "math": return # Built-in
+        
+        filename = f"{node.name}.qtl"
+        paths = [filename, os.path.join("samples", filename)]
+        filepath = next((p for p in paths if os.path.exists(p)), None)
+        
+        if not filepath:
+            self._report_error(node, "Import Error", f"Could not find '{node.name}.qtl'")
+            return
+
+        with open(filepath, 'r') as f: code = f.read()
+        tree = QuantelParser().parse(QuantelLexer().tokenize(code))
+        if tree: self.visit(tree)
+
     def generic_visit(self, node):
         for attr in vars(node).values():
             if hasattr(attr, '__dict__') or isinstance(attr, list):

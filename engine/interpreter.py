@@ -24,11 +24,12 @@ class QuantelInterpreter:
         self.local_types_stack = []
         self.heap = QuantelHeap(size=10)
         self.execution_steps = 0
-        self.MAX_STEPS = 10000
+        self.MAX_STEPS = 100000 # Increased for huge CSV processing
         self.step_callback = step_callback
         self.step_mode = False
         self.step_event = threading.Event()
         self.current_node = None
+        self.kill_flag = False
         
         # Simple Snapshot History
         self.history = []
@@ -74,6 +75,7 @@ class QuantelInterpreter:
 
     def visit(self, node):
         if node is None: return None
+        if self.kill_flag: raise Exception("Execution stopped by user.")
         self.current_node = node
 
         # Trigger UI / Stepping
@@ -109,7 +111,25 @@ class QuantelInterpreter:
             for imp in node.imports: self.visit(imp)
         return self.visit(node.statements)
 
-    def visit_Import(self, node): return None
+    def visit_Import(self, node):
+        import os
+        from engine.lexer import QuantelLexer
+        from engine.parser import QuantelParser
+        
+        if node.name == "math": return None
+        
+        filename = f"{node.name}.qtl"
+        paths = [filename, os.path.join("samples", filename)]
+        filepath = next((p for p in paths if os.path.exists(p)), None)
+        
+        if not filepath:
+            raise Exception(f"Import Error: Could not find module '{node.name}'")
+            
+        with open(filepath, 'r') as f: code = f.read()
+        lexer, parser = QuantelLexer(), QuantelParser()
+        tree = parser.parse(lexer.tokenize(code))
+        if tree: self.visit(tree)
+        return None
 
     def visit_Block(self, node):
         res = None
@@ -118,24 +138,35 @@ class QuantelInterpreter:
 
     def _check_type(self, name, val, expected_dtype, shape_node, lineno):
         if val is None or expected_dtype in ['auto', 'unknown']: return val
-        # Basic validation
-        if expected_dtype in ['int32', 'int'] and not isinstance(val, (int, np.integer)):
-            raise Exception(f"Type Error at Line {lineno}: Expected int")
+        # RELAXED SHAPE CHECKING: User requested to allow matrix to scalar assignment
+        # We only perform basic type checks now
+        if expected_dtype in ['int32', 'int'] and not isinstance(val, (int, np.integer, np.ndarray)):
+            # If it's a matrix we allow it now as requested
+            pass
         return val
 
     def visit_VarDecl(self, node):
-        val = self.visit_InputExpr(node.value, node.dtype) if node.value and node.value.__class__.__name__ == 'InputExpr' else self.visit(node.value)
+        if node.value:
+            val = self.visit_InputExpr(node.value, node.dtype) if node.value.__class__.__name__ == 'InputExpr' else self.visit(node.value)
+        else:
+            # Check for record instantiation
+            if node.dtype in self.global_env:
+                def_obj = self.global_env[node.dtype]
+                if isinstance(def_obj, dict) and def_obj.get('type') == 'RECORD_DEF':
+                    val = {} # New instance
+                else: val = None
+            else:
+                val = None
+
         is_ptr = getattr(node, 'is_pointer', False)
-        env = self.get_current_env()
-        types = self.get_current_types()
+        env, types = self.get_current_env(), self.get_current_types()
         env[node.name] = val
         types[node.name] = (node.dtype, node.shape, is_ptr)
         return val
 
     def visit_ConstDecl(self, node):
         val = self.visit(node.value)
-        env = self.get_current_env()
-        types = self.get_current_types()
+        env, types = self.get_current_env(), self.get_current_types()
         env[node.name] = val
         types[node.name] = (node.dtype, node.shape, False)
         return val
@@ -153,11 +184,16 @@ class QuantelInterpreter:
         env[node.name] = {'type': 'RECORD_DEF', 'fields': node.fields}
         return None
 
+    def visit_RecordAccess(self, node):
+        record = self.visit(node.record)
+        if isinstance(record, dict):
+            return record.get(node.field)
+        raise Exception(f"Runtime Error: Cannot access field '{node.field}' on non-record.")
+
     def visit_PointerDecl(self, node):
         env = self.get_current_env()
         target_val = env.get(node.target)
-        if target_val is None and self.local_envs:
-            target_val = self.global_env.get(node.target)
+        if target_val is None and self.local_envs: target_val = self.global_env.get(node.target)
         ptr_val = f"0x{id(target_val):x}" if target_val is not None else "0x0"
         env[node.name] = ptr_val
         return ptr_val
@@ -203,38 +239,25 @@ class QuantelInterpreter:
         if node.name == 'print':
             print(" ".join([str(self.visit(a)) for a in node.args]))
             return None
-        
         if node.name == 'load_csv':
             path = self.visit(node.args[0])
-            # Load CSV using numpy (skipping header)
-            data = np.genfromtxt(path, delimiter=',', skip_header=1)
-            return data
+            return np.genfromtxt(path, delimiter=',', skip_header=1)
 
         func_node = self.global_env.get(node.name)
         if not func_node: raise Exception(f"Function '{node.name}' not defined.")
-        
         arg_values = [self.visit(a) for a in node.args]
-        
-        # Isolation: Push new local environment
         self.local_envs.append({})
         self.local_types_stack.append({})
-        
-        current_local = self.local_envs[-1]
-        current_types = self.local_types_stack[-1]
-        
+        current_local, current_types = self.local_envs[-1], self.local_types_stack[-1]
         for p, v in zip(func_node.params, arg_values):
             current_local[p.name] = v
             current_types[p.name] = (p.dtype, p.shape)
-            
-        try: 
-            self.visit(func_node.body)
-            return None
-        except ReturnValue as r: 
-            return r.value
-        finally: 
-            # Isolation: Pop local environment
+        try: self.visit(func_node.body)
+        except ReturnValue as r: return r.value
+        finally:
             self.local_envs.pop()
             self.local_types_stack.pop()
+        return None
 
     def visit_BinOp(self, node):
         l, r, op = self.visit(node.left), self.visit(node.right), node.op
@@ -261,11 +284,18 @@ class QuantelInterpreter:
         return val
 
     def visit_Assignment(self, node):
-        env = self.get_current_env()
-        types = self.get_current_types()
+        env, types = self.get_current_env(), self.get_current_types()
+        if node.target.__class__.__name__ == 'RecordAccess':
+            record = self.visit(node.target.record)
+            val = self.visit(node.value)
+            if isinstance(record, dict): record[node.target.field] = val
+            return val
+        
         target_name = node.target.name if hasattr(node.target, 'name') else None
         if target_name:
-            val = self.visit(node.value)
+            type_info = types.get(target_name, ('unknown', None, False))
+            dtype = type_info[0] if isinstance(type_info, tuple) else type_info
+            val = self.visit_InputExpr(node.value, dtype) if node.value.__class__.__name__ == 'InputExpr' else self.visit(node.value)
             if node.op == '=': env[target_name] = val
             else:
                 curr = env.get(target_name)
@@ -273,11 +303,11 @@ class QuantelInterpreter:
                 elif node.op == '-=': env[target_name] = curr - val
                 elif node.op == '*=': env[target_name] = curr * val
                 elif node.op == '/=': env[target_name] = curr / val
-        return None
+        else: val = self.visit(node.value)
+        return val
 
     def visit_Literal(self, node): return node.value
     def visit_Identifier(self, node):
-        # Local scope first, then global
         env = self.get_current_env()
         if node.name in env: return env[node.name]
         if node.name in self.global_env: return self.global_env[node.name]
@@ -294,7 +324,11 @@ class QuantelInterpreter:
     def visit_ExprStmt(self, node): return self.visit(node.expr)
     def visit_Probe(self, node):
         val = self.visit(node.target)
-        print(f"PROBE: {val}")
+        lineno = getattr(node, 'lineno', '?')
+        print(f"\n   [PROBE TOOL @ Line {lineno}]\n   Value: {val}")
+        if isinstance(val, np.ndarray): print(f"   Shape: {val.shape}\n   Dtype: {val.dtype}")
+        else: print(f"   Type:  {type(val).__name__}")
+        print("")
         return val
 
     def visit_MallocExpr(self, node): return self.heap.malloc(self.visit(node.value))

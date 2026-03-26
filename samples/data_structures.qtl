@@ -1,0 +1,10 @@
+// Record Definitions
+record Point {
+    float32 scalar x;
+    float32 scalar y;
+}
+
+record LayerConfig {
+    int32 scalar size;
+    bool scalar active;
+}

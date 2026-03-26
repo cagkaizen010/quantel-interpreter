@@ -1,0 +1,8 @@
+// Math Utilities
+func square(float32 scalar x) -> float32 scalar {
+    return x * x;
+}
+
+func cube(float32 scalar x) -> float32 scalar {
+    return x * x * x;
+}
