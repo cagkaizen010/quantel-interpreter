@@ -56,9 +56,16 @@ class QuantelIDE(ctk.CTk):
                                       fg_color="#444444", hover_color="#555555", # Neutral when inactive
                                       state="disabled", command=self.step_program)
         self.step_btn.pack(side=tk.RIGHT, padx=5, pady=5)
-        self.step_tooltip = CTkToolTip(self.step_btn, message="Step Execution")
+        self.step_tooltip = CTkToolTip(self.step_btn, message="Step Forward")
 
-        self.debug_btn = ctk.CTkButton(self.toolbar, text="⚙", width=30, height=24, 
+        self.step_back_btn = ctk.CTkButton(self.toolbar, text="↶", width=30, height=24, 
+                                           text_color="white",
+                                           fg_color="#444444", hover_color="#555555",
+                                           state="disabled", command=self.step_back_program)
+        self.step_back_btn.pack(side=tk.RIGHT, padx=5, pady=5)
+        self.step_back_tooltip = CTkToolTip(self.step_back_btn, message="Step Backward")
+
+        self.debug_btn = ctk.CTkButton(self.toolbar, text="🪲", width=30, height=24, 
                                        text_color="white",
                                        fg_color="#444444", hover_color="#555555",
                                        command=self.debug_quantel_code)
@@ -176,9 +183,11 @@ class QuantelIDE(ctk.CTk):
         if debug_mode:
             self.debug_btn.configure(fg_color="#28a745") # Green when active
             self.step_btn.configure(state="normal", fg_color="#1f538d") # Blue when active
+            self.step_back_btn.configure(state="normal", fg_color="#1f538d")
         else:
             self.run_btn.configure(fg_color="#28a745") # Green when active
             self.step_btn.configure(state="disabled", fg_color="#444444")
+            self.step_back_btn.configure(state="disabled", fg_color="#444444")
 
         code = self.editor_panel.get_text()
 
@@ -306,8 +315,8 @@ class QuantelIDE(ctk.CTk):
                             self.after(0, lambda: self.run_btn.configure(state="normal", fg_color="#444444"))
                             self.after(0, lambda: self.debug_btn.configure(state="normal", fg_color="#444444"))
                             self.after(0, lambda: self.step_btn.configure(state="disabled", fg_color="#444444"))
+                            self.after(0, lambda: self.step_back_btn.configure(state="disabled", fg_color="#444444"))
                             self.after(0, lambda: self.editor_panel.clear_indicators())
-
             except Exception as e:
                 self.after(0, lambda e_msg=str(e): self.output_panel.show_error("System Error", [e_msg]))
 
@@ -320,6 +329,25 @@ class QuantelIDE(ctk.CTk):
     def step_program(self):
         if self.interpreter_instance:
             self.interpreter_instance.step_event.set()
+
+    def step_back_program(self):
+        if self.interpreter_instance:
+            if self.interpreter_instance.step_back():
+                # Trigger the callback manually to update UI with the restored state
+                # Note: This is a bit hacky as we are on the UI thread, but for a 
+                # snapshot restoration it should be fine.
+                self.memory_panel.update_map(self.interpreter_instance)
+                
+                node = self.interpreter_instance.current_node
+                if node:
+                    self.tac_panel.highlight_instruction(node)
+                    line = getattr(node, 'lineno', None)
+                    if line:
+                        self.editor_panel.highlight_line(line)
+                
+                # Unblock the interpreter thread so it can process the is_stepping_back flag
+                self.interpreter_instance.step_event.set()
+
 
     # -------------------------------------------------------------------------
     # UI HELPERS (Menus, Files, Toggles)

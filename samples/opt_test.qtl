@@ -1,0 +1,8 @@
+// Optimization Test
+int32 scalar a = 10;
+int32 scalar b = 20;
+int32 scalar result = a + b * 2;
+
+for i in 0..3 {
+    probe(i);
+}

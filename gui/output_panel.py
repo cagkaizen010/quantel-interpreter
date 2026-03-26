@@ -20,7 +20,7 @@ class OutputPanel(ctk.CTkFrame):
         self.tabs = {}
         technical_font = ("Courier New", 12)
 
-        for name in ["Output", "Lexer", "AST", "Symbols", "Errors", "Debug"]:
+        for name in ["Output", "Lexer", "AST", "Symbols", "Errors"]:
             self.tab_view.add(name)
             self.tab_view.tab(name).grid_columnconfigure(0, weight=1)
             self.tab_view.tab(name).grid_rowconfigure(0, weight=1)
@@ -28,11 +28,11 @@ class OutputPanel(ctk.CTkFrame):
             tb = ctk.CTkTextbox(self.tab_view.tab(name), font=technical_font, wrap="none")
             tb.grid(row=0, column=0, sticky="nsew")
             
-            if name != "Output":
-                tb.configure(state="disabled")
-            else:
+            # Universal key-handler to prevent typing but allow selection/copying
+            tb.bind("<Key>", lambda e, n=name: self._on_key(e, n))
+
+            if name == "Output":
                 tb.bind("<Return>", self._handle_return)
-                tb.bind("<Key>", self._on_key)
                 # Initialize the prompt mark
                 tb.mark_set(self.prompt_mark, "1.0")
                 tb.mark_gravity(self.prompt_mark, tk.LEFT)
@@ -49,20 +49,36 @@ class OutputPanel(ctk.CTkFrame):
         self.tabs["Symbols"].configure(text_color="#58D68D")
         self.tabs["Errors"].configure(text_color="#FF5555")
 
-    def _on_key(self, event):
-        """Prevents editing history (terminal behavior)."""
-        widget = self.tabs["Output"]
-        
-        # If user tries to type or delete before the prompt, stop them
-        if widget.compare("insert", "<", self.prompt_mark):
-            # Only allow navigating keys
-            if event.keysym not in ["Left", "Right", "Up", "Down", "Prior", "Next"]:
+    def _on_key(self, event, tab_name="Output"):
+        """Universal handler: allows navigation/copying, but blocks modification."""
+        widget = self.tabs[tab_name]
+
+        # Navigation/Copying keys are always allowed
+        allowed_keys = [
+            "Left", "Right", "Up", "Down", "Prior", "Next", 
+            "Home", "End", "c", "C", "a", "A", "v", "V"
+        ]
+
+        # Allow Ctrl+C (Copy), Ctrl+A (Select All)
+        if (event.state & 0x4):
+            if event.keysym.lower() in ["c", "a"]:
+                return None 
+            if tab_name == "Output" and event.keysym.lower() == "v":
+                return None
+
+        if event.keysym in allowed_keys:
+            return None 
+
+        # Output Tab has special "terminal" behavior
+        if tab_name == "Output":
+            if widget.compare("insert", "<", self.prompt_mark):
                 return "break"
-        
-        # Special handling for Backspace at the very edge of the prompt
-        if event.keysym == "BackSpace":
-            if widget.compare("insert", "<=", self.prompt_mark):
-                return "break"
+            if event.keysym == "BackSpace":
+                if widget.compare("insert", "<=", self.prompt_mark):
+                    return "break"
+            return None 
+
+        return "break"
 
     def _handle_return(self, event):
         """Captures input and sends it to the queue."""
