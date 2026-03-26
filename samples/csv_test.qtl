@@ -1,0 +1,11 @@
+// CSV Loading and Matrix Math Test
+auto dataset = load_csv("samples/data.csv");
+
+print("--- Loaded Dataset ---");
+probe(dataset);
+
+// Perform a simple operation (e.g., scale the features)
+float32 matrix<3,3> scaled = dataset * 2.0;
+
+print("--- Scaled Dataset (x2) ---");
+probe(scaled);

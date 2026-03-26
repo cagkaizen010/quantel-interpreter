@@ -114,42 +114,36 @@ class EditorPanel(ctk.CTkFrame):
         self.textbox.see(start)
 
     def toggle_comment(self, event=None):
-        """Toggles // comments for the selected line(s)."""
+        """Simple toggle for // comments."""
         try:
-            # Get selected range or current cursor line
+            # 1. Get Line Range
             try:
                 start_line = int(self.textbox.index("sel.first").split('.')[0])
                 end_line = int(self.textbox.index("sel.last").split('.')[0])
-                # If selection ends exactly at start of next line, exclude it
-                if self.textbox.index("sel.last").split('.')[1] == '0' and end_line > start_line:
-                    end_line -= 1
             except tk.TclError:
-                # No selection, use current line
                 start_line = end_line = int(self.textbox.index("insert").split('.')[0])
 
-            # Decide if we are commenting or uncommenting
-            # Rule: If any line in selection doesn't start with //, we comment all
-            all_commented = True
-            for line_idx in range(start_line, end_line + 1):
-                content = self.textbox.get(f"{line_idx}.0", f"{line_idx}.end").strip()
-                if content and not content.startswith("//"):
-                    all_commented = False
+            # 2. Decide Action (Comment if any line is uncommented)
+            do_comment = False
+            for i in range(start_line, end_line + 1):
+                text = self.textbox.get(f"{i}.0", f"{i}.end").strip()
+                if text and not text.startswith("//"):
+                    do_comment = True
                     break
-            
-            for line_idx in range(start_line, end_line + 1):
-                line_start = f"{line_idx}.0"
-                content = self.textbox.get(line_start, f"{line_idx}.end")
-                
-                if all_commented:
-                    # Uncomment: remove //
-                    if content.strip().startswith("//"):
-                        # Find exactly where // starts (handle indentation)
-                        idx = content.find("//")
-                        self.textbox.delete(f"{line_idx}.{idx}", f"{line_idx}.{idx+2}")
-                else:
-                    # Comment: add // at start
-                    self.textbox.insert(line_start, "//")
-            
-            return "break" # Prevent default event
-        except Exception:
-            pass
+
+            # 3. Apply
+            for i in range(start_line, end_line + 1):
+                line_text = self.textbox.get(f"{i}.0", f"{i}.end")
+                if do_comment:
+                    self.textbox.insert(f"{i}.0", "// ")
+                elif line_text.strip().startswith("//"):
+                    start_idx = line_text.find("//")
+                    # Delete 3 chars if "// ", else 2 chars for "//"
+                    count = 3 if line_text[start_idx:start_idx+3] == "// " else 2
+                    self.textbox.delete(f"{i}.{start_idx}", f"{i}.{start_idx+count}")
+
+            # 4. Keep selection
+            self.textbox.tag_add("sel", f"{start_line}.0", f"{end_line}.end")
+            return "break"
+        except:
+            return "break"

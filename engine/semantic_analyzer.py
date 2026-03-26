@@ -17,6 +17,7 @@ class SemanticAnalyzer:
         self.current_function = None
         # Predefine built-ins
         self.define(None, 'print', 'unknown', 'function', params_count=-1)
+        self.define(None, 'load_csv', 'matrix', 'function', params_count=1)
 
     def _report_error(self, node, message, hint):
         lineno = getattr(node, 'lineno', '??')

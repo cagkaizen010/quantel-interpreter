@@ -270,13 +270,15 @@ class QuantelIDE(ctk.CTk):
                             self.after(0, lambda e_msg=str(e): self.output_panel.write("Output", f"\n[Runtime Error] {e_msg}\n", False, tag="red"))
                         finally:
                             sys.stdout, sys.stdin = original_stdout, original_stdin
-                            self.after(0, lambda: self.run_btn.configure(state="normal", fg_color="#444444"))
-                            self.after(0, lambda: self.debug_btn.configure(state="normal", fg_color="#444444"))
-                            self.after(0, lambda: self.step_btn.configure(state="disabled", fg_color="#444444"))
-                            self.after(0, lambda: self.step_back_btn.configure(state="disabled", fg_color="#444444"))
-                            self.after(0, lambda: self.editor_panel.clear_indicators())
             except Exception as e:
                 self.after(0, lambda e_msg=str(e): self.output_panel.show_error("System Error", [e_msg]))
+            finally:
+                # RE-ENABLE BUTTONS ALWAYS
+                self.after(0, lambda: self.run_btn.configure(state="normal", fg_color="#444444"))
+                self.after(0, lambda: self.debug_btn.configure(state="normal", fg_color="#444444"))
+                self.after(0, lambda: self.step_btn.configure(state="disabled", fg_color="#444444"))
+                self.after(0, lambda: self.step_back_btn.configure(state="disabled", fg_color="#444444"))
+                self.after(0, lambda: self.editor_panel.clear_indicators())
 
         self.execution_thread = threading.Thread(target=execution_task, daemon=True)
         self.execution_thread.start()

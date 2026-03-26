@@ -42,7 +42,7 @@ class QuantelHighlighter(RegexLexer):
 
             # 7. Built-in Functions -> Purple/Cyan (Name.Builtin)
             (words((
-                'probe', 'print', 'len', 'shape', 'rows', 'cols', 'input', 'malloc'
+                'probe', 'print', 'len', 'shape', 'rows', 'cols', 'input', 'malloc', 'load_csv'
             ), suffix=r'\b'), Name.Builtin),
 
             # 8. Boolean Literals -> Purple (Keyword.Constant)

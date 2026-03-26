@@ -203,6 +203,13 @@ class QuantelInterpreter:
         if node.name == 'print':
             print(" ".join([str(self.visit(a)) for a in node.args]))
             return None
+        
+        if node.name == 'load_csv':
+            path = self.visit(node.args[0])
+            # Load CSV using numpy (skipping header)
+            data = np.genfromtxt(path, delimiter=',', skip_header=1)
+            return data
+
         func_node = self.global_env.get(node.name)
         if not func_node: raise Exception(f"Function '{node.name}' not defined.")
         
