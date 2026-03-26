@@ -71,10 +71,7 @@ class QuantelOptimizer:
                     del self.constants[target_name]
         return node
 
-    def visit_InputStmt(self, node):
-        # Variables modified by input should not be considered constants
-        if node.name in self.constants:
-            del self.constants[node.name]
+    def visit_InputExpr(self, node):
         return node
 
     def visit_Identifier(self, node):
@@ -88,20 +85,7 @@ class QuantelOptimizer:
     # --- Structural Optimizations ---
 
     def visit_Block(self, node):
-        new_statements = []
-        for stmt in node.statements:
-            result = self.visit(stmt)
-            if result is None:
-                continue
-
-            if isinstance(result, list):
-                new_statements.extend(result)
-            elif result.__class__.__name__ == 'Block':
-                new_statements.extend(result.statements)
-            else:
-                new_statements.append(result)
-
-        node.statements = new_statements
+        node.statements = self.visit(node.statements)
         return node
 
     def visit_BinOp(self, node):
@@ -235,11 +219,6 @@ class QuantelOptimizer:
         elif node.__class__.__name__ in ['Assignment', 'AugmentedAssignment']:
             if hasattr(node.target, 'name'):
                 modified.add(node.target.name)
-
-        # Input Statement (input(x))
-        elif node.__class__.__name__ == 'InputStmt':
-            if hasattr(node, 'name'):
-                modified.add(node.name)
 
         # For Loops (the loop variable changes every iteration!)
         elif node.__class__.__name__ == 'ForStmt':

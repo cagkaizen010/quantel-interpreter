@@ -17,7 +17,6 @@ class SemanticAnalyzer:
         self.current_function = None
         # Predefine built-ins
         self.define(None, 'print', 'unknown', 'function', params_count=-1)
-        self.define(None, 'input', 'string', 'function', params_count=-1)
 
     def _report_error(self, node, message, hint):
         lineno = getattr(node, 'lineno', '??')
@@ -97,6 +96,10 @@ class SemanticAnalyzer:
         if not self.lookup(node.target):
             self._report_error(node, "Undefined pointer target", f"'{node.target}' was never declared.")
         self.define(node, node.name, node.dtype, 'variable', initialized=True)
+
+    def visit_InputExpr(self, node):
+        self.visit(node.prompt)
+        return 'unknown' # Type will be inferred from target
 
     def visit_VarDecl(self, node):
         v_shape = getattr(node.shape, 'dims', []) if node.shape else []
@@ -282,6 +285,7 @@ class SemanticAnalyzer:
         cls = node.__class__.__name__
         if cls == 'Literal': return self.get_type(node.value)
         if cls == 'ArrayLiteral': return "float32"  # Defaulting to float for matrices
+        if cls == 'InputExpr': return "string"      # Default for input()
         if cls == 'CompareOp': return "bool"
         if cls == 'Identifier':
             s = self.lookup(node.name)

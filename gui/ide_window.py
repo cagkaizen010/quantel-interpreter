@@ -252,9 +252,16 @@ class QuantelIDE(ctk.CTk):
                         # Define a UI-thread callback for the interpreter to update the memory map live
                         def live_update_cb(interpreter):
                             self.after(0, lambda: self.memory_panel.update_map(interpreter))
-                            # Highlight current line
+                            
+                            # Highlight current instruction in TAC and Editor
                             if interpreter.current_node:
-                                line = getattr(interpreter.current_node, 'lineno', None)
+                                node = interpreter.current_node
+                                line = getattr(node, 'lineno', None)
+                                
+                                # Highlight the TAC line
+                                self.after(0, lambda n=node: self.tac_panel.highlight_instruction(n))
+                                
+                                # Highlight the Editor line
                                 if line:
                                     self.after(0, lambda l=line: self.editor_panel.highlight_line(l))
 

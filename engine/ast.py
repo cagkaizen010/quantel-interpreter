@@ -138,10 +138,9 @@ class Probe(Node):
         super().__init__(lineno)
         self.target = target
 
-class InputStmt(Node):
-    def __init__(self, name, prompt=None, lineno=0):
+class InputExpr(Node):
+    def __init__(self, prompt=None, lineno=0):
         super().__init__(lineno)
-        self.name = name
         self.prompt = prompt
 
 class ExprStmt(Node):

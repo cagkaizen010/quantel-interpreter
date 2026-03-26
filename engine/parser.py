@@ -133,7 +133,7 @@ class QuantelParser(Parser):
     def statements(self, p):
         return [p.statement]
 
-    @_('declaration', 'assignment', 'control_flow', 'probe_stmt', 'input_stmt',
+    @_('declaration', 'assignment', 'control_flow', 'probe_stmt',
        'func_decl', 'record_decl', 'block', 'return_stmt',
        'break_stmt', 'continue_stmt', 'expr_stmt', 'free_stmt', 'show_heap_stmt', 'error_stmt')
     def statement(self, p):
@@ -372,13 +372,11 @@ class QuantelParser(Parser):
     def probe_stmt(self, p):
         return ast.Probe(p.expr, lineno=p.lineno)
 
-    @_('INPUT LPAREN ID RPAREN SEMICOLON')
-    def input_stmt(self, p):
-        return ast.InputStmt(p.ID, None, lineno=p.lineno)
-
-    @_('INPUT LPAREN ID COMMA STRING RPAREN SEMICOLON')
-    def input_stmt(self, p):
-        return ast.InputStmt(p.ID, p.STRING, lineno=p.lineno)
+    @_('INPUT LPAREN RPAREN',
+       'INPUT LPAREN STRING RPAREN')
+    def expr(self, p):
+        prompt = p.STRING if hasattr(p, 'STRING') else None
+        return ast.InputExpr(prompt, lineno=p.lineno)
 
     @_('RETURN expr SEMICOLON')
     def return_stmt(self, p):

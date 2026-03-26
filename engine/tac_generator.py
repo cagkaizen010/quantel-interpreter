@@ -78,9 +78,12 @@ class TACGenerator:
         val = self.visit(expr_node)
         self.instructions.append(f"PROBE {val}")
 
-    def visit_ReturnStmt(self, node):
+    def visit_Return(self, node):
         val = self.visit(node.value) if node.value else "void"
         self.instructions.append(f"RETURN {val}")
+
+    def visit_CompareOp(self, node):
+        return self.visit_BinOp(node)
 
     def visit_IfStmt(self, node):
         label_id = self.temp_counter  # unique ID for labels
@@ -141,6 +144,18 @@ class TACGenerator:
 
     def visit_Identifier(self, node):
         return node.name
+
+    def visit_InputExpr(self, node):
+        temp = self.new_temp()
+        prompt = f'"{node.prompt}"' if node.prompt else ""
+        self.instructions.append(f"{temp} = INPUT({prompt})")
+        return temp
+
+    def visit_MallocExpr(self, node):
+        val = self.visit(node.value)
+        temp = self.new_temp()
+        self.instructions.append(f"{temp} = MALLOC({val})")
+        return temp
 
     def visit_FuncCall(self, node):
         args = [str(self.visit(arg)) for arg in (node.args or [])]

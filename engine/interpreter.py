@@ -148,7 +148,11 @@ class QuantelInterpreter:
     # ==========================================
 
     def visit_VarDecl(self, node):
-        val = self.visit(node.value) if node.value else None
+        # Pass type info if it's an input call
+        if node.value and node.value.__class__.__name__ == 'InputExpr':
+            val = self.visit_InputExpr(node.value, node.dtype)
+        else:
+            val = self.visit(node.value) if node.value else None
         is_pointer = getattr(node, 'is_pointer', False)
 
         # Runtime Type Check (Skip if it's a pointer, as they hold addresses)
@@ -175,17 +179,9 @@ class QuantelInterpreter:
 
         return val
 
-    def visit_InputStmt(self, node):
-        prompt = node.prompt if node.prompt else f"Enter value for {node.name}: "
+    def visit_InputExpr(self, node, expected_dtype='string'):
+        prompt = node.prompt if node.prompt else "Enter value: "
         raw_val = input(prompt)
-        
-        types = self.local_types if self.local_types is not None else self.global_types
-        type_info = types.get(node.name, ('string', None))
-        
-        if isinstance(type_info, tuple):
-            expected_dtype, _ = type_info
-        else:
-            expected_dtype = type_info
         
         val = raw_val
         try:
@@ -196,10 +192,8 @@ class QuantelInterpreter:
             elif expected_dtype == 'bool':
                 val = raw_val.lower() in ['true', '1', 'yes']
         except ValueError:
-            raise Exception(f"Runtime Input Error: Expected {expected_dtype} for '{node.name}', but got '{raw_val}'")
+            raise Exception(f"Runtime Input Error: Expected {expected_dtype} but got '{raw_val}'")
         
-        env = self.local_env if self.local_env is not None else self.global_env
-        env[node.name] = val
         return val
 
     def visit_RecordDecl(self, node):
@@ -386,22 +380,32 @@ class QuantelInterpreter:
         return val
 
     def visit_Assignment(self, node):
-        val = self.visit(node.value)
-        
         env = self.local_env if self.local_env is not None else self.global_env
         types = self.local_types if self.local_types is not None else self.global_types
         
         target_name = node.target.name if hasattr(node.target, 'name') else None
 
         if target_name:
-            # Runtime Type Check for assignment
-            type_info = types.get(target_name, ('unknown', None))
+            # 1. Get the target's type info first
+            type_info = types.get(target_name, ('unknown', None, False))
             if isinstance(type_info, tuple):
-                dtype, shape = type_info
+                if len(type_info) == 3:
+                    dtype, shape, is_ptr = type_info
+                else:
+                    dtype, shape = type_info
+                    is_ptr = False
             else:
-                dtype, shape = type_info, None
+                dtype, shape, is_ptr = type_info, None, False
 
-            val = self._check_type(target_name, val, dtype, shape, getattr(node, 'lineno', '?'))
+            # 2. Now evaluate the value (passing dtype if it's an input call)
+            if node.value.__class__.__name__ == 'InputExpr':
+                val = self.visit_InputExpr(node.value, dtype)
+            else:
+                val = self.visit(node.value)
+
+            # 3. Type Checking
+            if not is_ptr:
+                val = self._check_type(target_name, val, dtype, shape, getattr(node, 'lineno', '?'))
             
             if node.op == '=':
                 env[target_name] = val
@@ -418,10 +422,12 @@ class QuantelInterpreter:
                     env[target_name] = current * val
                 elif node.op == '/=':
                     env[target_name] = current / val
-
-            # Trigger UI update
-            # (Handled by visit)
+        else:
+            # Target is complex (like an array index), evaluate value normally
+            val = self.visit(node.value)
+            # Future: add type checking for complex targets here
             pass
+
         return val
 
     # ==========================================

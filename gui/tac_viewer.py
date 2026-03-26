@@ -44,26 +44,30 @@ class TACViewerPanel(ctk.CTkFrame):
                 row = ["", "", "", ""]  # Default empty columns
 
                 # Pattern: res = arg1 op arg2 (e.g., t3 = Weights @ input_vec)
-                if '=' in line and any(op in line for op in ['+', '-', '*', '/', '@', '&&', '||']):
-                    parts = re.split(r' = | ', line)
-                    # result = parts[0], arg1 = parts[1], op = parts[2], arg2 = parts[3]
-                    if len(parts) >= 4:
-                        row = [parts[2], parts[1], parts[3], parts[0]]
+                bin_op_match = re.match(r"(\w+) = (\w+) ([\+\-\*/@%^&|<>!]=?|==|!=|&&|\|\|) (\w+)", line)
+                
+                # Pattern: res = op arg (e.g., t4 = -t3)
+                unary_op_match = re.match(r"(\w+) = ([\-!&])(\w+)", line)
 
-                # Pattern: res = arg (e.g., epoch_counter = 0)
-                elif '=' in line:
-                    parts = line.split(' = ')
-                    row = ["ASSIGN", parts[1], "", parts[0]]
+                # Pattern: res = arg (e.g., x = 5)
+                assign_match = re.match(r"(\w+) = (.+)", line)
 
-                # Pattern: FUNC/LABEL/GOTO (e.g., FUNC relu_activation:)
-                elif line.startswith(("FUNC", "L_", "GOTO", "IF_FALSE", "PROBE", "ENDFUNC")):
+                if bin_op_match:
+                    res, arg1, op, arg2 = bin_op_match.groups()
+                    row = [op, arg1, arg2, res]
+                elif unary_op_match:
+                    res, op, arg = unary_op_match.groups()
+                    row = [op, arg, "", res]
+                elif assign_match:
+                    res, val = assign_match.groups()
+                    row = ["ASSIGN", val, "", res]
+                elif line.startswith(("FUNC", "L_", "GOTO", "IF", "PROBE", "RETURN", "ENDFUNC", "ALLOC")):
                     parts = line.split()
-                    row[0] = parts[0]  # The Command
-                    if len(parts) > 1: row[1] = parts[1]  # The Target/Label
-                    if len(parts) > 2: row[2] = " ".join(parts[2:])  # Extra context
-
+                    row[0] = parts[0]
+                    if len(parts) > 1: row[1] = parts[1]
+                    if len(parts) > 2: row[2] = " ".join(parts[2:])
                 else:
-                    row[0] = line  # Catch-all for miscellaneous lines
+                    row[0] = line
 
                 table_data.append(row)
 
@@ -79,6 +83,34 @@ class TACViewerPanel(ctk.CTkFrame):
 
         except Exception as e:
             self._write(f"[Error] TAC Formatting failed:\n{str(e)}")
+
+    def highlight_instruction(self, node):
+        """Highlighter for debugging: finds the closest line matching the node and marks it."""
+        if not node: return
+        
+        lineno = getattr(node, 'lineno', None)
+        if not lineno: return
+
+        # Get the name of the operation (e.g., 'Assignment', 'BinOp')
+        cls_name = node.__class__.__name__.upper()
+        
+        # We try to find a line in the text area that looks like this node
+        self.text_area.tag_remove("debug", "1.0", "end")
+        
+        content = self.text_area.get("1.0", "end")
+        lines = content.split('\n')
+        
+        for i, line in enumerate(lines):
+            # Very basic heuristic: if the line contains a keyword from the instruction
+            # Or if the RESULT column matches the target name
+            target_name = getattr(node, 'name', getattr(node, 'target', None))
+            if isinstance(target_name, str) and target_name in line:
+                start_index = f"{i+1}.0"
+                end_index = f"{i+1}.end"
+                self.text_area.tag_add("debug", start_index, end_index)
+                self.text_area.tag_config("debug", background="#1e3a5f", foreground="#ffffff")
+                self.text_area.see(start_index)
+                break
 
     def _write(self, content):
         self.text_area.configure(state="normal")
