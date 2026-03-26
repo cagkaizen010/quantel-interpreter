@@ -1,0 +1,23 @@
+// Verification of Recursion and Input as Built-in
+
+func factorial(int32 scalar n) -> int32 scalar {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+int32 scalar res = factorial(5);
+print("Factorial of 5 is:", res);
+
+auto name = input("Enter your name: ");
+print("Hello,", name);
+
+// Test while loop with scalar condition
+int32 scalar i = 0;
+while (i < 3) {
+    print("Loop i =", i);
+    i += 1;
+}
+
+print("Done.");

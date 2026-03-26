@@ -1,0 +1,52 @@
+int32 scalar x = 0;
+input(x, "Enter x: ");
+probe(x);
+
+// Recursive Fibonacci Function
+func fib(int32 scalar n) -> int32 scalar {
+     if (n <= 1) {
+         return n;
+    }
+     return fib(n - 1) + fib(n - 2);
+}
+
+// Calculate the 10th Fibonacci number
+int32 scalar result = fib(10);
+
+print("The 10th Fibonacci number is:", result);
+
+// Counter example using a WHILE loop
+int32 scalar count = 1;
+int32 scalar limit = 0;
+
+// Ask the user for a limit
+input(limit, "How many times should I loop? ");
+
+print("--- Starting Loop ---");
+
+while (count <= limit) {
+    print("Loop iteration:", count);
+
+    // Increment the counter
+    count += 1;
+}
+
+print("--- Loop Finished ---");
+
+// Counter example using a REPEAT-UNTIL loop
+int32 scalar count = 1;
+int32 scalar limit = 0;
+
+// Ask the user for a limit
+input(limit, "How many times should I loop? ");
+
+print("--- Starting Repeat-Until Loop ---");
+
+repeat {
+    print("Loop iteration:", count);
+
+    // Increment the counter
+    count += 1;
+} until (count > limit); // It will stop as soon as count is greater than limit
+
+print("--- Loop Finished ---");

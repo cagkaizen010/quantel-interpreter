@@ -1,0 +1,32 @@
+print("--- Initializing Heap Test ---");
+
+// 1. Allocate three variables to fill the first 3 slots
+auto p1 = malloc(100);
+auto p2 = malloc(200);
+auto p3 = malloc(300);
+
+print("Initial Allocation (0, 1, 2):");
+show_heap();
+
+// 2. Free the middle one (p2) to create a GAP
+print("Freeing p2 (Address 1)...");
+free(p2);
+
+// 3. Show the gap at address 01
+show_heap();
+
+// 4. Allocate a new value. It should REUSE address 1 (the gap)
+print("Allocating p4 (Should reuse Address 1)...");
+auto p4 = malloc(400);
+show_heap();
+
+// 5. Test the Infinite Loop Safety Break
+print("Starting Safety Test (Infinite Loop)...");
+int32 scalar i = 0;
+while (true) {
+    i += 1;
+    // This loop has no exit condition,
+    // but your MAX_STEPS in visit_WhileStmt will kill it!
+}
+
+print("This line should print after the safety break.");
