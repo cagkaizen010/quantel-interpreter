@@ -13,6 +13,7 @@ from gui.editor_panel import EditorPanel
 from gui.output_panel import OutputPanel
 from gui.memory_map import MemoryMapPanel
 from gui.tac_viewer import TACViewerPanel
+from gui.file_explorer import FileExplorerPanel
 from gui.utils import render_ast_tree
 
 # --- Engine Imports ---
@@ -97,6 +98,10 @@ class QuantelIDE(ctk.CTk):
         self.main_pane.add(self.top_pane, stretch="always", height=600)
 
         # 3. Initialize Components
+        # Left Side Explorer
+        self.explorer_panel = FileExplorerPanel(self.top_pane, on_file_select=self._open_specific_file)
+        self.top_pane.add(self.explorer_panel, stretch="never", width=250)
+
         # Editor with Jump to Definition callback
         self.editor_panel = EditorPanel(self.top_pane, on_word_click=self.jump_to_definition)
         self.top_pane.add(self.editor_panel, stretch="always", width=900)
@@ -360,7 +365,8 @@ class QuantelIDE(ctk.CTk):
         menubar.add_cascade(label="File", menu=file_menu)
 
         file_menu.add_command(label="New", command=self._new_file, accelerator="Cmd+N")
-        file_menu.add_command(label="Open...", command=self._open_file, accelerator="Cmd+O")
+        file_menu.add_command(label="Open File...", command=self._open_file, accelerator="Cmd+O")
+        file_menu.add_command(label="Open Folder...", command=self._open_folder)
         file_menu.add_command(label="Save", command=self._save_file, accelerator="Cmd+S")
 
         file_menu.add_separator()
@@ -401,6 +407,11 @@ class QuantelIDE(ctk.CTk):
     def _open_file(self):
         filepath = filedialog.askopenfilename(filetypes=[("Quantel Files", "*.qtl"), ("All Files", "*.*")])
         if filepath: self._open_specific_file(filepath)
+
+    def _open_folder(self):
+        folder_path = filedialog.askdirectory()
+        if folder_path:
+            self.explorer_panel.set_project_root(folder_path)
 
     def _open_specific_file(self, filepath):
         try:
