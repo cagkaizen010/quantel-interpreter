@@ -112,3 +112,44 @@ class EditorPanel(ctk.CTkFrame):
         start, end = f"{line}.0", f"{line}.end"
         self.textbox.tag_add("error", start, end)
         self.textbox.see(start)
+
+    def toggle_comment(self, event=None):
+        """Toggles // comments for the selected line(s)."""
+        try:
+            # Get selected range or current cursor line
+            try:
+                start_line = int(self.textbox.index("sel.first").split('.')[0])
+                end_line = int(self.textbox.index("sel.last").split('.')[0])
+                # If selection ends exactly at start of next line, exclude it
+                if self.textbox.index("sel.last").split('.')[1] == '0' and end_line > start_line:
+                    end_line -= 1
+            except tk.TclError:
+                # No selection, use current line
+                start_line = end_line = int(self.textbox.index("insert").split('.')[0])
+
+            # Decide if we are commenting or uncommenting
+            # Rule: If any line in selection doesn't start with //, we comment all
+            all_commented = True
+            for line_idx in range(start_line, end_line + 1):
+                content = self.textbox.get(f"{line_idx}.0", f"{line_idx}.end").strip()
+                if content and not content.startswith("//"):
+                    all_commented = False
+                    break
+            
+            for line_idx in range(start_line, end_line + 1):
+                line_start = f"{line_idx}.0"
+                content = self.textbox.get(line_start, f"{line_idx}.end")
+                
+                if all_commented:
+                    # Uncomment: remove //
+                    if content.strip().startswith("//"):
+                        # Find exactly where // starts (handle indentation)
+                        idx = content.find("//")
+                        self.textbox.delete(f"{line_idx}.{idx}", f"{line_idx}.{idx+2}")
+                else:
+                    # Comment: add // at start
+                    self.textbox.insert(line_start, "//")
+            
+            return "break" # Prevent default event
+        except Exception:
+            pass

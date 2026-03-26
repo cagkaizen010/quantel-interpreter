@@ -318,6 +318,8 @@ class QuantelIDE(ctk.CTk):
         self.bind_all("<Control-o>", lambda e: self._open_file())
         self.bind_all("<Control-s>", lambda e: self._save_file())
         self.bind_all("<Control-f>", lambda e: self._open_search_bar())
+        self.bind_all("<Control-slash>", lambda e: self.editor_panel.toggle_comment())
+        self.bind_all("<Command-slash>", lambda e: self.editor_panel.toggle_comment())
         self.bind_all("<F5>", lambda e: self.run_quantel_code())
 
     def _new_file(self):
