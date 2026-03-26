@@ -159,6 +159,10 @@ class QuantelParser(Parser):
     def declaration(self, p):
         return ast.VarDecl(p.dtype, p.shape_type, p.ID, p.expr, lineno=p.lineno)
 
+    @_('dtype shape_type TIMES ID ASSIGN expr SEMICOLON')
+    def declaration(self, p):
+        return ast.VarDecl(p.dtype, p.shape_type, p.ID, p.expr, is_pointer=True, lineno=p.lineno)
+
     @_('CONST dtype shape_type ID ASSIGN expr SEMICOLON')
     def declaration(self, p):
         return ast.ConstDecl(p.dtype, p.shape_type, p.ID, p.expr, lineno=p.lineno)
@@ -166,6 +170,10 @@ class QuantelParser(Parser):
     @_('dtype shape_type ID SEMICOLON')
     def declaration(self, p):
         return ast.VarDecl(p.dtype, p.shape_type, p.ID, None, lineno=p.lineno)
+
+    @_('dtype shape_type TIMES ID SEMICOLON')
+    def declaration(self, p):
+        return ast.VarDecl(p.dtype, p.shape_type, p.ID, None, is_pointer=True, lineno=p.lineno)
 
     @_('AUTO ID ASSIGN expr SEMICOLON')
     def declaration(self, p):
@@ -175,9 +183,9 @@ class QuantelParser(Parser):
     def declaration(self, p):
         return ast.VarDecl(p.ID0, None, p.ID1, None, lineno=p.lineno)
 
-    @_('dtype shape_type TIMES ID ASSIGN AMPERSAND ID SEMICOLON')
-    def declaration(self, p):
-        return ast.PointerDecl(p.dtype, p.shape_type, p.ID0, p.ID1, lineno=p.lineno)
+    @_('AMPERSAND ID')
+    def expr(self, p):
+        return ast.UnaryOp('&', ast.Identifier(p.ID, lineno=p.lineno), lineno=p.lineno)
 
     @_('FUNC ID LPAREN param_list RPAREN ARROW dtype shape_type block')
     def func_decl(self, p):

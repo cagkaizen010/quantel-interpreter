@@ -21,12 +21,13 @@ class Import(Node):
 
 # --- Declarations ---
 class VarDecl(Node):
-    def __init__(self, dtype, shape, name, value=None, lineno=0):
+    def __init__(self, dtype, shape, name, value=None, is_pointer=False, lineno=0):
         super().__init__(lineno)
         self.dtype = dtype      # 'float32', 'auto', etc.
         self.shape = shape      # ShapeType node or None (if auto)
         self.name = name
         self.value = value
+        self.is_pointer = is_pointer
 
 class ConstDecl(Node):
     def __init__(self, dtype, shape, name, value, lineno=0):

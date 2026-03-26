@@ -34,9 +34,9 @@ class QuantelHeap:
         return self.memory[address]
 
     def __repr__(self):
-        """Visual map to show the 'Gaps' to your professor."""
+        """Visual map of the heap status."""
         map_str = "--- Heap Map ---\n"
         for i in range(self.max_size):
-            status = self.memory.get(i, "[ EMPTY GAP ]")
+            status = self.memory.get(i, "[ FREE ]")
             map_str += f"[{i:02}]: {status}\n"
         return map_str

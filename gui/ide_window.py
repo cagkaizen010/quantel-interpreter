@@ -72,6 +72,16 @@ class QuantelIDE(ctk.CTk):
         self.run_btn.pack(side=tk.RIGHT, padx=5, pady=5)
         self.run_tooltip = CTkToolTip(self.run_btn, message="Run Program")
 
+        # Optimizer Toggle
+        self.opt_var = tk.BooleanVar(value=True)
+        self.opt_toggle = ctk.CTkCheckBox(self.toolbar, text="Optimize", 
+                                          variable=self.opt_var,
+                                          font=("Segoe UI", 12),
+                                          checkbox_width=18, checkbox_height=18,
+                                          fg_color="#1f538d", hover_color="#2b2b2b")
+        self.opt_toggle.pack(side=tk.RIGHT, padx=15, pady=5)
+        self.opt_tooltip = CTkToolTip(self.opt_toggle, message="Toggle AST Optimization")
+
         # 3. Main Layout
         self.main_pane = tk.PanedWindow(self, orient=tk.VERTICAL, bg="#2b2b2b", bd=0, sashwidth=6)
         self.main_pane.pack(fill=tk.BOTH, expand=True)
@@ -220,11 +230,14 @@ class QuantelIDE(ctk.CTk):
 
                 if ast_tree:
                     # --- OPTIMIZER ---
-                    if QuantelOptimizer:
+                    should_optimize = self.opt_var.get()
+                    if QuantelOptimizer and should_optimize:
                         optimizer = QuantelOptimizer()
                         ast_tree = optimizer.optimize(ast_tree)
                         if optimizer.changed:
                             self.after(0, lambda: self.output_panel.write("Output", "[Optimizer] Code optimized.\n", False))
+                    elif not should_optimize:
+                        self.after(0, lambda: self.output_panel.write("Output", "[Optimizer] Skipped (User Disabled).\n", False))
 
                     # --- VISUALS ---
                     self.after(0, lambda: self.output_panel.write("AST", render_ast_tree(ast_tree)))

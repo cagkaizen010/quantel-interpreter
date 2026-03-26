@@ -26,12 +26,28 @@ class MemoryMapPanel(ctk.CTkFrame):
         # --- SECTION 1: GLOBAL ENVIRONMENT (The Stack) ---
         env_data = []
         for name, val in interpreter.global_env.items():
-            # If the value is an integer and likely a heap address, label it as a Pointer
-            val_type = type(val).__name__
-            val_display = val
+            # Get type info if available
+            type_info = interpreter.global_types.get(name)
+            is_ptr = False
+            dtype = type(val).__name__
 
-            # Check if this variable points to our Heap
-            if isinstance(val, int) and 0 <= val < interpreter.heap.max_size:
+            if type_info:
+                # Format: (dtype, shape, is_pointer)
+                if len(type_info) == 3:
+                    dtype, shape, is_ptr = type_info
+                else:
+                    dtype, shape = type_info
+
+            val_display = val
+            val_type = dtype
+
+            # If it's explicitly a pointer OR looks like a heap address, format it
+            if is_ptr:
+                val_type = f"*{dtype}"
+                if isinstance(val, int) and 0 <= val < interpreter.heap.max_size:
+                    val_display = f"-> @{val:02}"
+            elif isinstance(val, int) and 0 <= val < interpreter.heap.max_size and name != 'total_activation':
+                # Fallback for heap-like integers that aren't variables we know
                 val_type = "PTR (HeapAddr)"
                 val_display = f"-> @{val:02}"
 
@@ -50,7 +66,7 @@ class MemoryMapPanel(ctk.CTkFrame):
                 status = "ALLOCATED"
             else:
                 content = "---"
-                status = "[ EMPTY GAP ]"
+                status = "[ FREE ]"
 
             heap_data.append([f"@{addr:02}", status, content])
 

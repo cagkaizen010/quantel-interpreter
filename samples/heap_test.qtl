@@ -1,32 +1,29 @@
-print("--- Initializing Heap Test ---");
+// --- Quantel Heap & Pointer Test ---
 
-// 1. Allocate three variables to fill the first 3 slots
-auto p1 = malloc(100);
-auto p2 = malloc(200);
-auto p3 = malloc(300);
+print("1. Testing Variable vs Pointer");
+float32 scalar total_activation = 0.85;
+float32 scalar *ptr = malloc(total_activation); 
 
-print("Initial Allocation (0, 1, 2):");
-show_heap();
+probe(total_activation); // Should show value on stack
+probe(ptr);              // Should show heap address (e.g., @00)
 
-// 2. Free the middle one (p2) to create a GAP
-print("Freeing p2 (Address 1)...");
-free(p2);
+print("2. Testing Address-Of Operator");
+int32 scalar count = 100;
+int32 scalar *count_ptr = &count;
 
-// 3. Show the gap at address 01
-show_heap();
+probe(count_ptr); // Should show the reference to the stack variable
 
-// 4. Allocate a new value. It should REUSE address 1 (the gap)
-print("Allocating p4 (Should reuse Address 1)...");
-auto p4 = malloc(400);
-show_heap();
+print("3. Testing Heap Reuse");
+float32 scalar *p1 = malloc(1.1);
+float32 scalar *p2 = malloc(2.2);
+show_heap(); // Shows @01 and @02 allocated
 
-// 5. Test the Infinite Loop Safety Break
-print("Starting Safety Test (Infinite Loop)...");
-int32 scalar i = 0;
-while (true) {
-    i += 1;
-    // This loop has no exit condition,
-    // but your MAX_STEPS in visit_WhileStmt will kill it!
-}
+print("Freeing @01...");
+free(p1);
+show_heap(); // @01 should be [ FREE ]
 
-print("This line should print after the safety break.");
+print("Re-allocating (should reuse @01)...");
+float32 scalar *p3 = malloc(3.3);
+show_heap(); 
+
+print("--- Test Complete ---");

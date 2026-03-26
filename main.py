@@ -36,6 +36,7 @@ def run_cli():
     parser.add_argument("-l", "--lex", action="store_true", help="Tokenize and print tokens")
     parser.add_argument("--lex-out", action="store_true", help="Output lexed tokens to output.txt")
     parser.add_argument("-t", "--tac", action="store_true", help="Show Optimized Three-Address Code")
+    parser.add_argument("--no-opt", action="store_true", help="Skip AST Optimization")
 
     args = parser.parse_args()
 
@@ -138,13 +139,18 @@ def run_cli():
     print("--- Analysis Successful (0 Errors) ---")
 
     # --- 4. OPTIMIZATION ---
-    print("\n--- Optimizing AST ---")
-    optimizer = QuantelOptimizer()
-    optimized_tree = optimizer.optimize(tree)
+    if not args.no_opt:
+        print("\n--- Optimizing AST ---")
+        optimizer = QuantelOptimizer()
+        optimized_tree = optimizer.optimize(tree)
+    else:
+        print("\n--- Skipping Optimization ---")
+        optimized_tree = tree
 
     # --- 5. TAC GENERATION ---
     if args.tac:
-        print("\n--- Three-Address Code (Optimized) ---")
+        label = "Optimized" if not args.no_opt else "Unoptimized"
+        print(f"\n--- Three-Address Code ({label}) ---")
         tac_gen = TACGenerator()
         print(tac_gen.generate(optimized_tree))
 

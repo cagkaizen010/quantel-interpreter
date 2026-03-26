@@ -149,19 +149,20 @@ class QuantelInterpreter:
 
     def visit_VarDecl(self, node):
         val = self.visit(node.value) if node.value else None
-        
-        # Runtime Type Check
-        val = self._check_type(node.name, val, node.dtype, node.shape, getattr(node, 'lineno', '?'))
-        
+        is_pointer = getattr(node, 'is_pointer', False)
+
+        # Runtime Type Check (Skip if it's a pointer, as they hold addresses)
+        if not is_pointer:
+            val = self._check_type(node.name, val, node.dtype, node.shape, getattr(node, 'lineno', '?'))
+
         env = self.local_env if self.local_env is not None else self.global_env
         types = self.local_types if self.local_types is not None else self.global_types
-        
+
         env[node.name] = val
         # Store both dtype and shape info
-        types[node.name] = (node.dtype, node.shape)
+        types[node.name] = (node.dtype, node.shape, is_pointer)
 
         return val
-
     def visit_ConstDecl(self, node):
         val = self.visit(node.value)
         val = self._check_type(node.name, val, node.dtype, node.shape, getattr(node, 'lineno', '?'))
@@ -170,7 +171,7 @@ class QuantelInterpreter:
         types = self.local_types if self.local_types is not None else self.global_types
         
         env[node.name] = val
-        types[node.name] = (node.dtype, node.shape)
+        types[node.name] = (node.dtype, node.shape, False)
 
         return val
 
