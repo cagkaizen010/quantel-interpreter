@@ -1,0 +1,10 @@
+// New Quantel File
+
+
+// // ERROR TEST 5: Wrong return type in function 
+// // Demonstrate space separation
+// // We expect a return type of float32, not int32
+func bad_add(int32 scalar x, int32 scalar y) -> float32 scalar {
+    return x + y;
+}
+

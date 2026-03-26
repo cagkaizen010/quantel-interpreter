@@ -19,33 +19,11 @@ print(num);
 print(pi);
 print(is_active);
 
-// Using your custom debugging tool
+// Using probe
 probe(vector_a);
 print(ptr);
 
 
-// --- 3. Functions Demo ---
-print("--- 3. Valid Functions ---");
-
-// Basic function with a return value
-func multiply(int32 scalar a, int32 scalar b) -> int32 scalar {
-    return a * b;
-}
-
-
-// Recursive function to test local environment isolation
-func factorial(int32 scalar n) -> int32 scalar {
-    if (n <= 1) {
-        return 1;
-    }
-    return n * factorial(n-1);
-}
-
-int32 scalar math_result = multiply(10, 5);
-print("Multiplication result: ", math_result); // Expected 50
-
-int32 scalar fact_result = factorial(5);
-print("Factorial of 5: ", fact_result); // Expected: 120
 
 
 

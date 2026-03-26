@@ -1,0 +1,163 @@
+// New Quantel File
+// =========================================================================
+// 1. Headers/Comments (not required)
+// This file serves as the master test script for the Quantel Interpreter
+// validating all language constructs required for the parser and semantics.
+// =========================================================================
+
+// =========================================================================
+// 4. Structure
+// =========================================================================
+record DataPoint {
+    float32 scalar value;
+    int32 scalar id;
+}
+
+// =========================================================================
+// 18. Functions/Methods: Declaration and Calling
+// 19. Functions/Methods: Variable Scope
+// =========================================================================
+func compute_discount(float32 scalar price) -> float32 scalar {
+    // Variable Scope: 'discount' is strictly local to this block
+    float32 scalar discount = 0.20;
+    return price - (price * discount);
+}
+
+// =========================================================================
+// 20. Functions/Methods: Function Calling Another Function
+// 21. Functions/Methods: Call Multiple Times
+// =========================================================================
+func process_order(float32 scalar base_price) -> float32 scalar {
+    // Function calling another function
+    return compute_discount(base_price);
+}
+
+// =========================================================================
+// 22. Functions/Methods: Recursion
+// =========================================================================
+func countdown(int32 scalar n) -> int32 scalar {
+    if (n <= 0) {
+        return 0;
+    }
+    return countdown(n - 1);
+}
+
+
+// --- Main Execution Block ---
+func main() -> int32 scalar {
+    
+    // =========================================================================
+    // 2. Variable Declaration
+    // =========================================================================
+    int32 scalar x = 15;
+    float32 scalar temp = 98.6;
+    bool scalar is_valid = true;
+
+    // =========================================================================
+    // 3. Pointers
+    // =========================================================================
+    int32 scalar *ptr_x = &x;
+
+    // =========================================================================
+    // 5. Constant Declaration
+    // =========================================================================
+    const int32 scalar MAX_LIMIT = 100;
+
+    // =========================================================================
+    // 6. Assignment
+    // =========================================================================
+    x = 20;
+    x += 5; // Re-assigns x to 25
+
+    // =========================================================================
+    // 7. Math Expr: Simple
+    // =========================================================================
+    int32 scalar simple_math = x + 10 * 2 - 4 / 2; // Follows PEMDAS
+
+    // =========================================================================
+    // 8. Math Expr: Complex (includes arrays, function calls)
+    // =========================================================================
+    int32 vector<3> multipliers = [2, 4, 6];
+    int32 scalar complex_math = multipliers[1] * simple_math + process_order(100.0);
+
+    // =========================================================================
+    // 9. Conditional Statements
+    // =========================================================================
+    if (complex_math > 100) {
+        probe("Math result is greater than 100");
+    } else {
+        probe("Math result is smaller than 100");
+    }
+
+    // =========================================================================
+    // 10. Iterative Statements: Event-controlled loop (While)
+    // =========================================================================
+    int32 scalar event_counter = 0;
+    while (event_counter < 3) {
+        event_counter += 1;
+    }
+
+    // =========================================================================
+    // 11. Iterative Statements: Count-controlled loop (For)
+    // =========================================================================
+    for i in 0..5 step 1 {
+        probe(i);
+    }
+
+    // =========================================================================
+    // 12. Iterative Statements: Repeat-Until / Do-while
+    // =========================================================================
+    int32 scalar repeat_counter = 0;
+    repeat {
+        repeat_counter += 1;
+    } until (repeat_counter == 3);
+
+    // =========================================================================
+    // 13. Boolean Expressions: Simple
+    // =========================================================================
+    bool scalar is_max = x == MAX_LIMIT;
+
+    // =========================================================================
+    // 14. Boolean Expressions: Complex/Simple Logical
+    // =========================================================================
+    bool scalar is_within_range = (x >= 0) && (x <= MAX_LIMIT);
+
+    // =========================================================================
+    // 15. Boolean Expressions: Multiple/Complex Logical
+    // =========================================================================
+    bool scalar complex_logic = ((x > 10) && is_within_range) || !(event_counter == 3);
+
+    // =========================================================================
+    // 16. Input Statement
+    // =========================================================================
+    int32 scalar user_val;
+    // input(user_val, "Please enter a test value: " );
+
+    // =========================================================================
+    // 17. Output Statement
+    // =========================================================================
+    probe("Testing Complete. Outputting final logic state: ");
+    probe(complex_logic);
+
+    // Validating 'Call Multiple Times' from Row 21
+    process_order(50.0);
+    process_order(75.0);
+
+    // Validating 'Recursion' from Row 22
+    countdown(5);
+
+    // =========================================================================
+    // 23. Nested Statements
+    // =========================================================================
+    if (is_valid == true) {
+        while (event_counter > 0) {
+            if (event_counter == 1) {
+                probe("Deeply nested statement reached.");
+            }
+            event_counter -= 1;
+        }
+    }
+
+    return 0;
+}
+main();
