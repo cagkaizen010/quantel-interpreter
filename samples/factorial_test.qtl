@@ -1,0 +1,13 @@
+// Recursive function to test local environment isolation
+func factorial(int32 scalar n) -> int32 scalar {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+int32 scalar result5 = factorial(5);
+print("Factorial of 5:", result5);
+
+int32 scalar result3 = factorial(3);
+print("Factorial of 3:", result3);

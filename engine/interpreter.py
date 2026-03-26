@@ -11,13 +11,17 @@ class ReturnValue(Exception):
 class BreakException(Exception): pass
 class ContinueException(Exception): pass
 
+class StepBackException(Exception):
+    """Raised to jump back in the execution sequence."""
+    pass
+
 # --- Main Interpreter Class ---
 class QuantelInterpreter:
     def __init__(self, step_callback=None):
         self.global_env = {}
         self.global_types = {}
-        self.local_env = None
-        self.local_types = None
+        self.local_envs = []
+        self.local_types_stack = []
         self.heap = QuantelHeap(size=10)
         self.execution_steps = 0
         self.MAX_STEPS = 10000
@@ -29,13 +33,19 @@ class QuantelInterpreter:
         # Simple Snapshot History
         self.history = []
 
+    def get_current_env(self):
+        return self.local_envs[-1] if self.local_envs else self.global_env
+
+    def get_current_types(self):
+        return self.local_types_stack[-1] if self.local_types_stack else self.global_types
+
     def take_snapshot(self, node):
         snapshot = {
             'node': node,
             'global_env': copy.deepcopy(self.global_env),
             'global_types': copy.deepcopy(self.global_types),
-            'local_env': copy.deepcopy(self.local_env),
-            'local_types': copy.deepcopy(self.local_types),
+            'local_envs': copy.deepcopy(self.local_envs),
+            'local_types_stack': copy.deepcopy(self.local_types_stack),
             'heap_memory': copy.deepcopy(self.heap.memory),
             'heap_free_pool': copy.deepcopy(self.heap.free_pool),
             'execution_steps': self.execution_steps
@@ -50,8 +60,8 @@ class QuantelInterpreter:
         
         self.global_env = copy.deepcopy(prev['global_env'])
         self.global_types = copy.deepcopy(prev['global_types'])
-        self.local_env = copy.deepcopy(prev['local_env'])
-        self.local_types = copy.deepcopy(prev['local_types'])
+        self.local_envs = copy.deepcopy(prev['local_envs'])
+        self.local_types_stack = copy.deepcopy(prev['local_types_stack'])
         self.heap.memory = copy.deepcopy(prev['heap_memory'])
         self.heap.free_pool = copy.deepcopy(prev['heap_free_pool'])
         self.execution_steps = prev['execution_steps']
@@ -114,18 +124,18 @@ class QuantelInterpreter:
         return val
 
     def visit_VarDecl(self, node):
-        val = self.visit_InputExpr(node.value, node.dtype) if node.value.__class__.__name__ == 'InputExpr' else self.visit(node.value)
+        val = self.visit_InputExpr(node.value, node.dtype) if node.value and node.value.__class__.__name__ == 'InputExpr' else self.visit(node.value)
         is_ptr = getattr(node, 'is_pointer', False)
-        env = self.local_env if self.local_env is not None else self.global_env
-        types = self.local_types if self.local_types is not None else self.global_types
+        env = self.get_current_env()
+        types = self.get_current_types()
         env[node.name] = val
         types[node.name] = (node.dtype, node.shape, is_ptr)
         return val
 
     def visit_ConstDecl(self, node):
         val = self.visit(node.value)
-        env = self.local_env if self.local_env is not None else self.global_env
-        types = self.local_types if self.local_types is not None else self.global_types
+        env = self.get_current_env()
+        types = self.get_current_types()
         env[node.name] = val
         types[node.name] = (node.dtype, node.shape, False)
         return val
@@ -139,13 +149,15 @@ class QuantelInterpreter:
         except: return raw_val
 
     def visit_RecordDecl(self, node):
-        env = self.local_env if self.local_env is not None else self.global_env
+        env = self.get_current_env()
         env[node.name] = {'type': 'RECORD_DEF', 'fields': node.fields}
         return None
 
     def visit_PointerDecl(self, node):
-        env = self.local_env if self.local_env is not None else self.global_env
+        env = self.get_current_env()
         target_val = env.get(node.target)
+        if target_val is None and self.local_envs:
+            target_val = self.global_env.get(node.target)
         ptr_val = f"0x{id(target_val):x}" if target_val is not None else "0x0"
         env[node.name] = ptr_val
         return ptr_val
@@ -173,7 +185,7 @@ class QuantelInterpreter:
     def visit_ForStmt(self, node):
         start = int(self.visit(node.range.start))
         end = int(self.visit(node.range.end))
-        env = self.local_env if self.local_env is not None else self.global_env
+        env = self.get_current_env()
         for i in range(start, end):
             env[node.loop_var] = i
             try: self.visit(node.body)
@@ -192,16 +204,30 @@ class QuantelInterpreter:
             print(" ".join([str(self.visit(a)) for a in node.args]))
             return None
         func_node = self.global_env.get(node.name)
+        if not func_node: raise Exception(f"Function '{node.name}' not defined.")
+        
         arg_values = [self.visit(a) for a in node.args]
-        prev_env, prev_types = self.local_env, self.local_types
-        self.local_env, self.local_types = {}, {}
+        
+        # Isolation: Push new local environment
+        self.local_envs.append({})
+        self.local_types_stack.append({})
+        
+        current_local = self.local_envs[-1]
+        current_types = self.local_types_stack[-1]
+        
         for p, v in zip(func_node.params, arg_values):
-            self.local_env[p.name] = v
-            self.local_types[p.name] = (p.dtype, p.shape)
-        try: self.visit(func_node.body)
-        except ReturnValue as r: return r.value
-        finally: self.local_env, self.local_types = prev_env, prev_types
-        return None
+            current_local[p.name] = v
+            current_types[p.name] = (p.dtype, p.shape)
+            
+        try: 
+            self.visit(func_node.body)
+            return None
+        except ReturnValue as r: 
+            return r.value
+        finally: 
+            # Isolation: Pop local environment
+            self.local_envs.pop()
+            self.local_types_stack.pop()
 
     def visit_BinOp(self, node):
         l, r, op = self.visit(node.left), self.visit(node.right), node.op
@@ -211,8 +237,11 @@ class QuantelInterpreter:
         if op == '/': return l / r
         if op == '@': return np.matmul(l, r)
         if op == '==': return l == r
+        if op == '!=': return l != r
         if op == '<': return l < r
         if op == '>': return l > r
+        if op == '<=': return l <= r
+        if op == '>=': return l >= r
         return None
 
     def visit_CompareOp(self, node): return self.visit_BinOp(node)
@@ -225,8 +254,8 @@ class QuantelInterpreter:
         return val
 
     def visit_Assignment(self, node):
-        env = self.local_env if self.local_env is not None else self.global_env
-        types = self.local_types if self.local_types is not None else self.global_types
+        env = self.get_current_env()
+        types = self.get_current_types()
         target_name = node.target.name if hasattr(node.target, 'name') else None
         if target_name:
             val = self.visit(node.value)
@@ -234,14 +263,18 @@ class QuantelInterpreter:
             else:
                 curr = env.get(target_name)
                 if node.op == '+=': env[target_name] = curr + val
+                elif node.op == '-=': env[target_name] = curr - val
+                elif node.op == '*=': env[target_name] = curr * val
+                elif node.op == '/=': env[target_name] = curr / val
         return None
 
     def visit_Literal(self, node): return node.value
     def visit_Identifier(self, node):
-        env = self.local_env if self.local_env is not None else self.global_env
-        val = env.get(node.name)
-        if val is None and self.local_env is not None: val = self.global_env.get(node.name)
-        return val
+        # Local scope first, then global
+        env = self.get_current_env()
+        if node.name in env: return env[node.name]
+        if node.name in self.global_env: return self.global_env[node.name]
+        raise Exception(f"Variable '{node.name}' is not defined.")
 
     def visit_ArrayLiteral(self, node): return np.array([self.visit(el) for el in node.elements])
     def visit_ArrayAccess(self, node):
@@ -258,5 +291,7 @@ class QuantelInterpreter:
         return val
 
     def visit_MallocExpr(self, node): return self.heap.malloc(self.visit(node.value))
-    def visit_FreeStmt(self, node): self.heap.free(self.global_env.get(node.name))
+    def visit_FreeStmt(self, node): 
+        env = self.get_current_env()
+        self.heap.free(env.get(node.name))
     def visit_ShowHeap(self, node): print(self.heap)
