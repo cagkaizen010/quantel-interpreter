@@ -36,12 +36,13 @@ class QuantelHighlighter(RegexLexer):
             # 6. Control Flow & Keywords -> Pink (Keyword)
             (words((
                 'import', 'record', 'return', 'if', 'else', 'for', 'in',
-                'while', 'repeat', 'until', 'break', 'continue', 'as'
+                'while', 'repeat', 'until', 'break', 'continue', 'step',
+                'const', 'free', 'show_heap'
             ), suffix=r'\b'), Keyword),
 
             # 7. Built-in Functions -> Purple/Cyan (Name.Builtin)
             (words((
-                'probe', 'print', 'len', 'shape', 'rows', 'cols'
+                'probe', 'print', 'len', 'shape', 'rows', 'cols', 'input', 'malloc'
             ), suffix=r'\b'), Name.Builtin),
 
             # 8. Boolean Literals -> Purple (Keyword.Constant)
