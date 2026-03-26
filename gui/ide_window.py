@@ -1,7 +1,8 @@
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 import io
+import os
 import contextlib
 import re
 import sys
@@ -11,7 +12,7 @@ from CTkToolTip import CTkToolTip
 # --- Project GUI Components ---
 from gui.editor_panel import EditorPanel
 from gui.output_panel import OutputPanel
-from gui.memory_map import MemoryMapPanel
+from gui.memory_map import StackMapPanel, HeapMapPanel
 from gui.tac_viewer import TACViewerPanel
 from gui.file_explorer import FileExplorerPanel
 from gui.utils import render_ast_tree
@@ -42,8 +43,6 @@ class QuantelIDE(ctk.CTk):
 
         # State
         self.current_file = None
-        self.show_memory = True
-        self.show_tac = True
         self.interpreter_instance = None
         self.execution_thread = None
 
@@ -54,7 +53,7 @@ class QuantelIDE(ctk.CTk):
         # Icon-based buttons packed to the right
         self.step_btn = ctk.CTkButton(self.toolbar, text="⤵", width=30, height=24, 
                                       text_color="white",
-                                      fg_color="#444444", hover_color="#555555", # Neutral when inactive
+                                      fg_color="#444444", hover_color="#555555",
                                       state="disabled", command=self.step_program)
         self.step_btn.pack(side=tk.RIGHT, padx=5, pady=5)
         self.step_tooltip = CTkToolTip(self.step_btn, message="Step Forward")
@@ -94,36 +93,40 @@ class QuantelIDE(ctk.CTk):
         self.main_pane = tk.PanedWindow(self, orient=tk.VERTICAL, bg="#2b2b2b", bd=0, sashwidth=6)
         self.main_pane.pack(fill=tk.BOTH, expand=True)
 
+        # TOP AREA (Explorer | Editor | Memory)
         self.top_pane = tk.PanedWindow(self.main_pane, orient=tk.HORIZONTAL, bg="#2b2b2b", bd=0, sashwidth=6)
         self.main_pane.add(self.top_pane, stretch="always", height=600)
 
-        # 3. Initialize Components
-        # Left Side Explorer
+        # Left Explorer
         self.explorer_panel = FileExplorerPanel(self.top_pane, on_file_select=self._open_specific_file)
         self.top_pane.add(self.explorer_panel, stretch="never", width=250)
 
-        # Editor with Jump to Definition callback
+        # Center Editor
         self.editor_panel = EditorPanel(self.top_pane, on_word_click=self.jump_to_definition)
-        self.top_pane.add(self.editor_panel, stretch="always", width=900)
+        self.top_pane.add(self.editor_panel, stretch="always", width=750)
 
+        # Right Memory Side
         self.side_container = ctk.CTkFrame(self.top_pane, corner_radius=0)
         self.top_pane.add(self.side_container, stretch="never", width=400)
-
         self.side_container.grid_columnconfigure(0, weight=1)
-        self.side_container.grid_rowconfigure(0, weight=1)
-        self.side_container.grid_rowconfigure(1, weight=1)
+        self.side_container.grid_rowconfigure(0, weight=1) # Stack
+        self.side_container.grid_rowconfigure(1, weight=1) # Heap
 
-        self.memory_panel = MemoryMapPanel(self.side_container)
-        self.memory_panel.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
+        self.stack_panel = StackMapPanel(self.side_container)
+        self.stack_panel.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
 
-        self.tac_panel = TACViewerPanel(self.side_container)
-        self.tac_panel.grid(row=1, column=0, sticky="nsew", padx=2, pady=2)
+        self.heap_panel = HeapMapPanel(self.side_container)
+        self.heap_panel.grid(row=1, column=0, sticky="nsew", padx=2, pady=2)
 
-        self.output_panel = OutputPanel(
-            self.main_pane,
-            on_line_click=self.highlight_editor_line
-        )
-        self.main_pane.add(self.output_panel, stretch="never", height=300)
+        # BOTTOM AREA (Output | TAC)
+        self.bottom_pane = tk.PanedWindow(self.main_pane, orient=tk.HORIZONTAL, bg="#2b2b2b", bd=0, sashwidth=6)
+        self.main_pane.add(self.bottom_pane, stretch="never", height=300)
+
+        self.output_panel = OutputPanel(self.bottom_pane, on_line_click=self.highlight_editor_line)
+        self.bottom_pane.add(self.output_panel, stretch="always", width=800)
+
+        self.tac_panel = TACViewerPanel(self.bottom_pane)
+        self.bottom_pane.add(self.tac_panel, stretch="always", width=600)
 
         # 4. Menus & Bindings
         self._create_menu()
@@ -137,11 +140,9 @@ class QuantelIDE(ctk.CTk):
     # -------------------------------------------------------------------------
 
     def jump_to_definition(self, word):
-        """Scans code for declarations or assignments of the given word."""
         if not word: return
         code = self.editor_panel.get_text()
         patterns = [rf"func\s+{word}\b", rf"var\s+{word}\b", rf"auto\s+{word}\b", rf"\b{word}\s*="]
-
         for p in patterns:
             match = re.search(p, code)
             if match:
@@ -149,28 +150,16 @@ class QuantelIDE(ctk.CTk):
                 self.editor_panel.highlight_line(line_num)
                 return
 
-    def _open_search_bar(self):
-        """Triggers the minimalist overlay in the EditorPanel."""
-        self.editor_panel.show_search()
-
-    def highlight_editor_line(self, line_number):
-        """Called when a user clicks a row in the Lexer tab."""
-        self.editor_panel.highlight_line(line_number)
+    def _open_search_bar(self): self.editor_panel.show_search()
+    def highlight_editor_line(self, line_number): self.editor_panel.highlight_line(line_number)
 
     def _get_line_from_error(self, err):
-        """Intelligently finds a line number in an error object or string."""
-        # Check direct attributes
         for attr in ['lineno', 'line', 'row']:
             val = getattr(err, attr, None)
             if isinstance(val, int): return val
-
         err_str = str(err)
-        # Patterns like "line 32", "Line 32", "(Line 32)"
         match = re.search(r"line\s+(\d+)", err_str, re.IGNORECASE)
-        if match:
-            return int(match.group(1))
-
-        return None
+        return int(match.group(1)) if match else None
 
     # -------------------------------------------------------------------------
     # CORE LOGIC: THE COMPILER PIPELINE
@@ -181,16 +170,15 @@ class QuantelIDE(ctk.CTk):
         self.editor_panel.clear_indicators()
         self.output_panel.select_tab("Output")
 
-        # Set active colors
         self.run_btn.configure(state="disabled")
         self.debug_btn.configure(state="disabled")
         
         if debug_mode:
-            self.debug_btn.configure(fg_color="#28a745") # Green when active
-            self.step_btn.configure(state="normal", fg_color="#1f538d") # Blue when active
+            self.debug_btn.configure(fg_color="#28a745")
+            self.step_btn.configure(state="normal", fg_color="#1f538d")
             self.step_back_btn.configure(state="normal", fg_color="#1f538d")
         else:
-            self.run_btn.configure(fg_color="#28a745") # Green when active
+            self.run_btn.configure(fg_color="#28a745")
             self.step_btn.configure(state="disabled", fg_color="#444444")
             self.step_back_btn.configure(state="disabled", fg_color="#444444")
 
@@ -198,7 +186,6 @@ class QuantelIDE(ctk.CTk):
 
         def execution_task():
             try:
-                # --- PHASE 1: LEXER ---
                 lexer = QuantelLexer()
                 tokens = list(lexer.tokenize(code))
                 self.after(0, lambda: self.output_panel.update_lexer_tab(tokens))
@@ -210,7 +197,6 @@ class QuantelIDE(ctk.CTk):
                     self.after(0, lambda: self.output_panel.show_error("Lexer Errors", lexer.errors))
                     return
 
-                # --- PHASE 2: PARSER ---
                 if not QuantelParser:
                     self.after(0, lambda: self.output_panel.show_error("Config Error", ["Parser missing."]))
                     return
@@ -225,98 +211,65 @@ class QuantelIDE(ctk.CTk):
                     self.after(0, lambda: self.output_panel.show_error("Parser Errors", parser.errors))
                     return
 
-                # --- PHASE 2.1: SEMANTIC ANALYSIS ---
                 from engine.semantic_analyzer import SemanticAnalyzer
                 analyzer = SemanticAnalyzer()
                 analyzer.analyze(ast_tree)
                 semantic_errors = analyzer.errors
 
                 if semantic_errors:
-                    for err in semantic_errors:
-                        line_match = re.search(r"\(Line (\d+)\)", err)
-                        if line_match:
-                            line = int(line_match.group(1))
-                            self.after(0, lambda l=line: self.editor_panel.mark_error(l))
                     self.after(0, lambda: self.output_panel.show_error("Semantic Errors", semantic_errors))
                     return
                 else:
                     self.after(0, lambda: self.output_panel.update_symbols_tab(analyzer))
 
                 if ast_tree:
-                    # --- OPTIMIZER ---
                     should_optimize = self.opt_var.get()
                     if QuantelOptimizer and should_optimize:
                         optimizer = QuantelOptimizer()
                         ast_tree = optimizer.optimize(ast_tree)
-                        if optimizer.changed:
-                            self.after(0, lambda: self.output_panel.write("Output", "[Optimizer] Code optimized.\n", False))
-                    elif not should_optimize:
-                        self.after(0, lambda: self.output_panel.write("Output", "[Optimizer] Skipped (User Disabled).\n", False))
-
-                    # --- VISUALS ---
+                    
                     self.after(0, lambda: self.output_panel.write("AST", render_ast_tree(ast_tree)))
-
-                    # --- INTEGRATED TAC VIEWING ---
                     self.after(0, lambda: self.tac_panel.generate_and_show(ast_tree))
 
-                    # --- INTERPRETER ---
                     if QuantelInterpreter:
                         self.after(0, lambda: self.output_panel.write("Output", "--- Running Program ---\n", False))
                         
-                        # Define a UI-thread callback for the interpreter to update the memory map live
                         def live_update_cb(interpreter):
-                            self.after(0, lambda: self.memory_panel.update_map(interpreter))
+                            self.after(0, lambda: self.stack_panel.update_map(interpreter))
+                            self.after(0, lambda: self.heap_panel.update_map(interpreter))
                             
-                            # Highlight current instruction in TAC and Editor
                             if interpreter.current_node:
                                 node = interpreter.current_node
-                                line = getattr(node, 'lineno', None)
-                                
-                                # Highlight the TAC line
                                 self.after(0, lambda n=node: self.tac_panel.highlight_instruction(n))
-                                
-                                # Highlight the Editor line
-                                if line:
-                                    self.after(0, lambda l=line: self.editor_panel.highlight_line(l))
+                                line = getattr(node, 'lineno', None)
+                                if line: self.after(0, lambda l=line: self.editor_panel.highlight_line(l))
 
                         self.interpreter_instance = QuantelInterpreter(step_callback=live_update_cb)
-                        if debug_mode:
-                            self.interpreter_instance.step_mode = True
+                        if debug_mode: self.interpreter_instance.step_mode = True
 
                         class GUIStream:
-                            def __init__(self, panel, original, is_stdout=True):
+                            def __init__(self, panel, original):
                                 self.panel = panel
                                 self.original = original
-                                self.is_stdout = is_stdout
                             def write(self, s):
-                                if self.is_stdout:
-                                    self.original.write(s)
-                                    self.panel.after(0, lambda: self.panel.write("Output", s, False))
-                            def flush(self):
-                                self.original.flush()
-                            def readline(self):
-                                # This will block the background thread until input is available in the GUI
-                                return self.panel.get_input() + "\n"
+                                self.original.write(s)
+                                self.panel.after(0, lambda: self.panel.write("Output", s, False))
+                            def flush(self): self.original.flush()
+                            def readline(self): return self.panel.get_input() + "\n"
 
-                        original_stdout = sys.stdout
-                        original_stdin = sys.stdin
+                        original_stdout, original_stdin = sys.stdout, sys.stdin
                         try:
                             stream = GUIStream(self.output_panel, original_stdout)
                             sys.stdout = stream
                             sys.stdin = stream
                             self.interpreter_instance.interpret(ast_tree)
                             self.after(0, lambda: self.output_panel.write("Output", "\n[Finished]", False))
-                            self.after(0, lambda: self.memory_panel.update_map(self.interpreter_instance))
+                            self.after(0, lambda: self.stack_panel.update_map(self.interpreter_instance))
+                            self.after(0, lambda: self.heap_panel.update_map(self.interpreter_instance))
                         except Exception as e:
-                            line = self._get_line_from_error(e)
-                            if line:
-                                self.after(0, lambda l=line: self.editor_panel.mark_error(l))
-                            # Use default argument to capture e in lambda scope
                             self.after(0, lambda e_msg=str(e): self.output_panel.write("Output", f"\n[Runtime Error] {e_msg}\n", False, tag="red"))
                         finally:
-                            sys.stdout = original_stdout
-                            sys.stdin = original_stdin
-                            # Reset UI to Neutral
+                            sys.stdout, sys.stdin = original_stdout, original_stdin
                             self.after(0, lambda: self.run_btn.configure(state="normal", fg_color="#444444"))
                             self.after(0, lambda: self.debug_btn.configure(state="normal", fg_color="#444444"))
                             self.after(0, lambda: self.step_btn.configure(state="disabled", fg_color="#444444"))
@@ -328,47 +281,31 @@ class QuantelIDE(ctk.CTk):
         self.execution_thread = threading.Thread(target=execution_task, daemon=True)
         self.execution_thread.start()
 
-    def debug_quantel_code(self):
-        self.run_quantel_code(debug_mode=True)
-
+    def debug_quantel_code(self): self.run_quantel_code(debug_mode=True)
     def step_program(self):
-        if self.interpreter_instance:
-            self.interpreter_instance.step_event.set()
+        if self.interpreter_instance: self.interpreter_instance.step_event.set()
 
     def step_back_program(self):
         if self.interpreter_instance:
             if self.interpreter_instance.step_back():
-                # Trigger the callback manually to update UI with the restored state
-                # Note: This is a bit hacky as we are on the UI thread, but for a 
-                # snapshot restoration it should be fine.
-                self.memory_panel.update_map(self.interpreter_instance)
-                
+                self.stack_panel.update_map(self.interpreter_instance)
+                self.heap_panel.update_map(self.interpreter_instance)
                 node = self.interpreter_instance.current_node
                 if node:
                     self.tac_panel.highlight_instruction(node)
                     line = getattr(node, 'lineno', None)
-                    if line:
-                        self.editor_panel.highlight_line(line)
-                
-                # Unblock the interpreter thread so it can process the is_stepping_back flag
+                    if line: self.editor_panel.highlight_line(line)
                 self.interpreter_instance.step_event.set()
-
-
-    # -------------------------------------------------------------------------
-    # UI HELPERS (Menus, Files, Toggles)
-    # -------------------------------------------------------------------------
 
     def _create_menu(self):
         menubar = tk.Menu(self)
         self.config(menu=menubar)
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
-
         file_menu.add_command(label="New", command=self._new_file, accelerator="Cmd+N")
         file_menu.add_command(label="Open File...", command=self._open_file, accelerator="Cmd+O")
         file_menu.add_command(label="Open Folder...", command=self._open_folder)
         file_menu.add_command(label="Save", command=self._save_file, accelerator="Cmd+S")
-
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.quit, accelerator="Cmd+Q")
 
@@ -376,23 +313,7 @@ class QuantelIDE(ctk.CTk):
         menubar.add_cascade(label="Edit", menu=edit_menu)
         edit_menu.add_command(label="Find", command=self._open_search_bar, accelerator="Cmd+F")
 
-        run_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Run", menu=run_menu)
-        run_menu.add_command(label="Run Program", command=self.run_quantel_code, accelerator="F5")
-
-        view_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="View", menu=view_menu)
-        view_menu.add_command(label="Toggle Memory Map", command=self._toggle_memory)
-        view_menu.add_command(label="Toggle White Box", command=self._toggle_tac)
-
     def _bind_shortcuts(self):
-
-        ## To prevent the hotkeys from popping up during use.
-        # self.bind_all("<Command-n>", lambda e: self._new_file())
-        # self.bind_all("<Command-o>", lambda e: self._open_file())
-        # self.bind_all("<Command-s>", lambda e: self._save_file())
-        
-        # self.bind_all("<Command-f>", lambda e: self._open_search_bar())
         self.bind_all("<Control-n>", lambda e: self._new_file())
         self.bind_all("<Control-o>", lambda e: self._open_file())
         self.bind_all("<Control-s>", lambda e: self._save_file())
@@ -410,56 +331,21 @@ class QuantelIDE(ctk.CTk):
 
     def _open_folder(self):
         folder_path = filedialog.askdirectory()
-        if folder_path:
-            self.explorer_panel.set_project_root(folder_path)
+        if folder_path: self.explorer_panel.set_project_root(folder_path)
 
     def _open_specific_file(self, filepath):
         try:
-            print(f"DEBUG: Opening file: {filepath}") # Added for debugging
-            with open(filepath, "r") as f:
-                content = f.read()
+            with open(filepath, "r") as f: content = f.read()
             self.editor_panel.set_text(content)
             self.current_file = filepath
-            self.title(f"Quantel IDE - {filepath}")
-        except Exception as e:
-            self.output_panel.show_error("File Error", [f"Could not open file: {e}"])
+            self.title(f"Quantel IDE - {os.path.basename(filepath)}")
+        except Exception as e: messagebox.showerror("Open File", str(e))
 
     def _save_file(self):
+        if not self.current_file:
+            self.current_file = filedialog.asksaveasfilename(defaultextension=".qtl")
         if self.current_file:
             try:
-                with open(self.current_file, "w") as f:
-                    f.write(self.editor_panel.get_text())
-            except Exception as e:
-                self.output_panel.show_error("File Error", [f"Could not save file: {e}"])
-        else:
-            self._save_file_as()
-
-    def _save_file_as(self):
-        filepath = filedialog.asksaveasfilename(filetypes=[("Quantel Files", "*.qtl"), ("All Files", "*.*")])
-        if filepath:
-            try:
-                with open(filepath, "w") as f:
-                    f.write(self.editor_panel.get_text())
-                self.current_file = filepath
-                self.title(f"Quantel IDE - {filepath}")
-            except Exception as e:
-                self.output_panel.show_error("File Error", [f"Could not save file: {e}"])
-
-    def _toggle_memory(self):
-        if self.show_memory:
-            self.memory_panel.grid_forget()
-        else:
-            self.memory_panel.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
-        self.show_memory = not self.show_memory
-
-    def _toggle_tac(self):
-        if self.show_tac:
-            self.tac_panel.grid_forget()
-        else:
-            self.tac_panel.grid(row=1, column=0, sticky="nsew", padx=2, pady=2)
-        self.show_tac = not self.show_tac
-
-
-if __name__ == "__main__":
-    app = QuantelIDE()
-    app.mainloop()
+                with open(self.current_file, "w") as f: f.write(self.editor_panel.get_text())
+                self.explorer_panel.refresh_tree()
+            except Exception as e: messagebox.showerror("Save File", str(e))
