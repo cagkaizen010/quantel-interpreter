@@ -21,14 +21,16 @@ int32 scalar t = 5;
 
 bool scalar b1 = false;
 bool scalar b2 = true;
-
+	
 int32 scalar testvar1 = 5;
 int32 scalar testvar2 = 10;
 
-probe(testvar1 + testvar2);
-probe(false && true); 
+//probe(testvar1 + testvar2);
+probe(b1 || b2); 
 
 bool scalar b3 = 1 == 1;
+
+// input();
 // probe(num1 + num2 * num3);
 // probe(num1 > num2);
 // probe(b3);
@@ -45,16 +47,50 @@ bool scalar b3 = 1 == 1;
 
 
 
-bool scalar test1 = false;
+//bool scalar test1 = true;
 
-func scope_test_2(bool scalar te) -> bool scalar {
-	 return te && test1;
+// scope_test_2(bool scalar input) -> bool scalar {
+//	 return input && test1;
+//}
+
+//func scope_test() -> bool scalar{
+//	bool scalar test2 = true;
+//	return test2;
+//}
+
+//probe( scope_test_2(scope_test())  );
+
+
+func recursion(int32 scalar varie) -> int32 scalar {
+	if (varie ==0){
+		return 0;
+	} 
+	recursion(varie-1);
 }
 
-func scope_test() -> bool scalar{
-	bool scalar test2 = true;
-	return test2;
-}
 
-probe( scope_test_2(scope_test())  );
-//probe(scope_test());
+recursion(5);
+
+
+func factorial(int32 scalar n) -> int32 scalar {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+probe(factorial(5));
+
+
+
+
+func factorial(int32 scalar n) -> int32 scalar {
+	int32 scalar x = n;
+    if (x <= 1) {
+        return 1;
+    }
+    return x * factorial(x - 1);
+}
+probe(factorial(5));
+
+
+

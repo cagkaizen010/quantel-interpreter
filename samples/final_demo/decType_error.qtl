@@ -1,0 +1,24 @@
+// --- Syntax Error Testing Demo ---
+print("--- Intentional Syntax Errors ---");
+
+// ERROR TEST 1: Missing shape type
+// Should fail because variables require a <shape_type> (e.g., scalar, vector).
+// int32 count = 10; 
+
+// ERROR TEST 2: Invalid comma in matrix dimensions
+// The parser should fail because matrix dimensions must be space-separated.
+float32 matrix<2, 2> identity = [[1.0, 0.0], [0.0, 1.0]];
+
+// ERROR TEST 5: Commas in function parameter list
+// The parser should fail because <param_list> uses space separation, not commas.
+func bad_add(int32 scalar x, int32 scalar y) -> float32 scalar {
+    return x + y;
+}
+
+int64 scalar bad_var = bad_add(1,2);
+
+// ERROR TEST 6: Incorrect pointer spacing
+// The parser should fail because the grammar strictly demands spaces around '*' and '&'.
+
+int32 scalar count = 3;
+int32 scalar * bad_ptr = & count;

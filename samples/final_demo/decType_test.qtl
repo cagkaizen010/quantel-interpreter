@@ -1,0 +1,98 @@
+// Quantel Final Demonstration
+
+// --- 1. Declarations and Types Demo ---
+print("--- 1. Valid Declarations ---");
+
+// Primitives
+int32 scalar num = 42;
+float32 scalar pi = 3.1415;
+bool scalar is_active = true;
+
+// Arrays (leveraging your NumPy backend)
+int32 matrix<1,3> vector_a = [1, 2, 3];
+int32 matrix<1,3> vector_b = [4, 5, 6];
+
+// Pointer evaluation (using the & unary operator from visit_UnaryOp)
+int32 scalar *ptr = &num; 
+
+print(num);
+print(pi);
+print(is_active);
+
+// Using your custom debugging tool
+probe(vector_a);
+print(ptr);
+
+
+// --- 3. Functions Demo ---
+print("--- 3. Valid Functions ---");
+
+// Basic function with a return value
+func multiply(int32 scalar a, int32 scalar b) -> int32 scalar {
+    return a * b;
+}
+
+
+// Recursive function to test local environment isolation
+func factorial(int32 scalar n) -> int32 scalar {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n-1);
+}
+
+int32 scalar math_result = multiply(10, 5);
+print("Multiplication result: ", math_result); // Expected 50
+
+int32 scalar fact_result = factorial(5);
+print("Factorial of 5: ", fact_result); // Expected: 120
+
+
+
+// ==========================================
+//  ERROR TESTING SECTION 
+// Uncomment the lines below individually to test runtime errors
+// ==========================================
+
+// --- 2. Declarations and Types (Errors) ---
+// print("--- 2. Declaration Errors ---");
+
+// ERROR A: Undefined variable usage
+// Expected: "Runtime Error: Variable 'mystery_variable' is not defined."
+// var invalid_assign = mystery_variable + 10; 
+
+// ERROR B: Modifying an undeclared variable
+// Expected: "Variable 'unknown_var' not defined."
+// unknown_var += 5;
+
+// ERROR C: Type mismatch math (Caught by Python backend)
+// Expected: "Math Error at Line X (+): can only concatenate str (not "int") to str"
+// var bad_math = "String" + 50;
+
+
+// --- 4. Functions (Errors) ---
+// print "--- 4. Function Errors ---";
+
+// ERROR D: Calling a function that hasn't been defined
+// Expected: "Function 'does_not_exist' not defined."
+// var ghost = does_not_exist(10);
+
+// ERROR E: Scope leak check
+// Expected: "Runtime Error: Variable 'hidden_val' is not defined."
+// func scope_test(x) {
+//    var hidden_val = 99;
+//    return x;
+//}
+// scope_test(1);
+// print hidden_val;
+
+
+
+
+// auto p1 = malloc(100);
+
+// Memory
+// float32 scalar total_activation = 0.0;
+// float32 scalar *ptr = &total_activation;
+
+// probe(ptr);

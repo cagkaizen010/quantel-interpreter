@@ -45,10 +45,10 @@ bool scalar b3 = 1 == 1;
 
 
 
-bool scalar test1 = false;
+bool scalar test1 = true;
 
-func scope_test_2(bool scalar te) -> bool scalar {
-	 return te && test1;
+func scope_test_2(bool scalar input) -> bool scalar {
+	 return input && test1;
 }
 
 func scope_test() -> bool scalar{
@@ -56,5 +56,6 @@ func scope_test() -> bool scalar{
 	return test2;
 }
 
-probe( scope_test_2(scope_test())  );
-//probe(scope_test());
+//probe( scope_test_2(scope_test())  );
+probe(scope_test());
+
