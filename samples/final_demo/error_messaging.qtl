@@ -1,0 +1,27 @@
+
+// 2. Error Messaging Test Suite
+
+
+
+
+    // TEST 1: Lexical Error (Illegal Character)
+     //int32 scalar money = $100;
+
+    // TEST 2: Syntax Error (Missing Semicolon)
+	// float32 scalar pi = 3.1415
+
+    // =========================================================================
+    // TEST 3: Syntax Error (Invalid Grammar / Using Commas)
+    // Ideal Error: "Verify syntax: check for mismatched brackets, missing semicolons, or invalid types."
+    // =========================================================================
+    //probe(10, 20);
+
+    // =========================================================================
+    // TEST 4: Semantic Error (Undeclared Variable)
+    // Ideal Error: 
+	// "Error:    Undefined identifier 'ghost_var'"
+    // "Hint:     Variable is out of scope."
+    // =========================================================================
+    //   int32 scalar x = ghost_var + 10;
+
+

@@ -42,9 +42,6 @@ func countdown(int32 scalar n) -> int32 scalar {
     return countdown(n - 1);
 }
 
-
-// --- Main Execution Block ---
-func main() -> int32 scalar {
     
     // =========================================================================
     // 2. Variable Declaration
@@ -140,8 +137,8 @@ func main() -> int32 scalar {
     probe(complex_logic);
 
     // Validating 'Call Multiple Times' from Row 21
-    process_order(50.0);
-    process_order(75.0);
+    print(process_order(50.0));
+    print(process_order(75.0));
 
     // Validating 'Recursion' from Row 22
     countdown(5);
@@ -158,6 +155,5 @@ func main() -> int32 scalar {
         }
     }
 
-    return 0;
-}
-main();
+
+

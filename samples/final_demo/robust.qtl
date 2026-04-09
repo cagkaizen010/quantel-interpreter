@@ -1,0 +1,29 @@
+// New Quantel File
+// Demonstrate the robustness
+
+
+// Simple Math
+// x = id + num;
+int32 scalar sum;
+int32 scalar thing_to_add = 5;
+sum = thing_to_add + 10;
+probe(sum);
+
+
+// Complex Math1
+func func1(int32 scalar x, int32 scalar y, int32 scalar z) -> int32 scalar {
+	return x + y + z;
+}
+
+int32 scalar sum_2 = func1(1,2,3) + 45;
+print(sum_2);
+
+// Simple boolean
+print( (32*5) > (32+4) );
+
+
+// Complex boolean
+print("Complex boolean", false && true);
+
+// Complex boolean but nested
+ print("Complex boolean but nested",(func1(1,2,3)  > func1(2,3,4)) || !(func1(2,2,2) == 0));

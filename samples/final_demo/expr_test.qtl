@@ -2,3 +2,20 @@
 
 // Expressions
 
+// MATRIX MULTIPLICATION
+int32 matrix<2,3> m1 = [[4, 5, 7], [2, 1, 0]];
+int32 matrix<3,2> m2 = [[2,3], [8,9], [1,1]];
+
+// Matrix Mult operation on 2x3 @ 3x2 = 2x2
+print(m1@m2);
+print("");
+
+// Matrix Mult operation on 3x2 @ 2x3 = 3x3
+print(m2@m1);
+print("");
+
+// Matrix Mult operation on 3x2 @ 3x2 = ERROR
+// print(m2@m2);
+
+// Matrix Mult operation on 2x3 @ 2x3 = ERROR
+// print(m1@m1);
